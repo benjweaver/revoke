@@ -25,6 +25,8 @@ final class NetworkFilter: NSObject, ObservableObject {
     var onReady: (() -> Void)?
 
     private var activation: OSSystemExtensionRequest?
+    /// Whether `activation` is the request that removes the filter.
+    private var removing = false
     private var connection: NSXPCConnection?
 
     var isOn: Bool { state == .on }
@@ -66,6 +68,25 @@ final class NetworkFilter: NSObject, ObservableObject {
                         if let error { return self.fail(error) }
                         self.state = .on
                         self.onReady?()
+                    }
+                }
+            }
+        }
+    }
+
+    /// Switches the filter off and uninstalls it, so nothing is left behind when
+    /// Revoke is deleted. macOS asks for an administrator's password.
+    func remove() {
+        NEFilterManager.shared().loadFromPreferences { _ in
+            MainActor.assumeIsolated {
+                NEFilterManager.shared().removeFromPreferences { _ in
+                    MainActor.assumeIsolated {
+                        let request = OSSystemExtensionRequest.deactivationRequest(
+                            forExtensionWithIdentifier: FilterIdentity.extensionBundleID, queue: .main)
+                        request.delegate = self
+                        self.activation = request
+                        self.removing = true
+                        OSSystemExtensionManager.shared.submitRequest(request)
                     }
                 }
             }
@@ -168,6 +189,12 @@ extension NetworkFilter: OSSystemExtensionRequestDelegate {
         MainActor.assumeIsolated {
             guard isActivation(finished) else { return }
             activation = nil
+            if removing {
+                removing = false
+                connection = nil
+                state = .notInstalled
+                return
+            }
             switch result {
             case .completed: enable()
             case .willCompleteAfterReboot: state = .failed("Restart the Mac to finish installing the filter.")
@@ -179,7 +206,10 @@ extension NetworkFilter: OSSystemExtensionRequestDelegate {
     nonisolated func request(_ request: OSSystemExtensionRequest, didFailWithError error: Error) {
         let failed = ObjectIdentifier(request)
         MainActor.assumeIsolated {
-            if isActivation(failed) { activation = nil }
+            if isActivation(failed) {
+                activation = nil
+                removing = false
+            }
             // A properties request fails this way when nothing is installed yet.
             if (error as NSError).code == OSSystemExtensionError.extensionNotFound.rawValue {
                 state = .notInstalled

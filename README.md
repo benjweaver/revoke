@@ -24,6 +24,20 @@ need these permissions while they work and shouldn't keep them afterwards.
 Apps from Anthropic and OpenAI are watched by default. Any other app can be added in
 Settings.
 
+## Install
+
+```sh
+brew install --cask benjweaver/revoke/revoke
+```
+
+Or download `Revoke-<version>.zip` from Releases and move Revoke to Applications,
+the only place macOS runs its network filter from. Releases are signed with a
+Developer ID and notarized by Apple, so macOS opens them without a warning. Open
+Revoke, give it Full Disk Access, and install the network filter from its settings.
+
+To uninstall, choose **Remove Network Filter** in Revoke's settings first, so the
+filter goes too, then delete Revoke (`brew uninstall --cask revoke`).
+
 ## What it can't do, and why
 
 macOS keeps these permissions in a database that System Integrity Protection guards.
@@ -73,7 +87,7 @@ Screen columns show question marks.
 macOS applies Full Disk Access when an app restarts, so choose **Quit & Reopen** after
 switching it on.
 
-## Build and install
+## Build
 
 Needs Xcode and [XcodeGen](https://github.com/yonaskolb/XcodeGen). macOS 15 or later;
 built and tested on macOS 27.
@@ -82,22 +96,40 @@ built and tested on macOS 27.
 Scripts/install.sh
 ```
 
-This archives Revoke, exports it signed with the team's Developer ID, notarises it,
-and installs it in `/Applications`, the only place macOS runs a system extension from.
-The filter's entitlements come with provisioning profiles, so Xcode has to be signed
-in to the team (`DEVELOPMENT_TEAM` in `project.yml`); the script lets it create them.
-Notarising uses the notarytool profile `notary`
-(`xcrun notarytool store-credentials notary`). Full Disk Access belongs to the
+This archives Revoke, exports it signed with the team's Developer ID, notarizes it,
+and installs it in `/Applications`. The filter's entitlements come with provisioning
+profiles, so Xcode has to be signed in to the team (`DEVELOPMENT_TEAM` in
+`project.yml`); the build lets it create them. Full Disk Access belongs to the
 signature, which stays the same across builds.
 
-To build your own copy, put your team ID in place of `AR25V66TVY` in `project.yml`
-and `Shared/FilterControl.swift`: the filter's XPC service, its app group, and the
-signature it accepts changes from all carry it.
+To build your own copy, put your team ID in place of `AR25V66TVY` in `project.yml`,
+`Shared/FilterControl.swift`, and `Scripts/release.sh`: the filter's XPC service, its
+app group, and the signature it accepts changes from all carry it.
 
 Every revocation, and every connection the filter drops, is logged:
 
 ```sh
 log show --last 1d --predicate 'subsystem BEGINSWITH "dev.benjweaver.Revoke"'
+```
+
+## Support
+
+Revoke is free. If it's useful, you can [support its development](https://benjweaver.dev/support/revoke).
+
+## Release
+
+Bump `MARKETING_VERSION` and `CURRENT_PROJECT_VERSION` in `project.yml` (macOS only
+replaces the network filter when its build number changes), add the version's section
+to `CHANGELOG.md`, then commit and push. `Scripts/release.sh` does the rest: it builds
+a universal app, signs it with the Developer ID, has Apple notarize it, publishes the
+zip as a GitHub release with that changelog section as the notes, and points the
+[Homebrew tap](https://github.com/benjweaver/homebrew-revoke) at it.
+
+Notarizing needs an App Store Connect API key, saved once in the keychain as the
+notarytool profile `notary`:
+
+```sh
+xcrun notarytool store-credentials notary --key AuthKey_<key id>.p8 --key-id <key id> --issuer <issuer id>
 ```
 
 ## License

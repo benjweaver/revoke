@@ -109,12 +109,20 @@ struct SettingsView: View {
         case .off:
             Text("The network filter is installed but switched off.")
             Button("Turn On") { filter.enable() }
+            removeFilter
         case .on:
             Label("Revoke can block Local Network.", systemImage: "checkmark.circle.fill")
+            removeFilter
         case .failed(let message):
             Text(message).foregroundStyle(.red).fixedSize(horizontal: false, vertical: true)
             Button("Try Again") { filter.install() }
         }
+    }
+
+    /// Before Revoke is deleted, so the system extension goes with it.
+    private var removeFilter: some View {
+        Button("Remove Network Filter", role: .destructive) { filter.remove() }
+            .help("Uninstalls the filter. Do this before deleting Revoke.")
     }
 
     private func setLogin(_ wanted: Bool) {
