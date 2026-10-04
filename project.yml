@@ -1,0 +1,84 @@
+# XcodeGen spec. The .xcodeproj is generated and gitignored: `xcodegen generate`.
+name: Revoke
+options:
+  bundleIdPrefix: dev.benjweaver
+  deploymentTarget:
+    macOS: "15.0"
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    SWIFT_STRICT_CONCURRENCY: complete
+    SWIFT_TREAT_WARNINGS_AS_ERRORS: YES
+    GCC_TREAT_WARNINGS_AS_ERRORS: YES
+    ENABLE_USER_SCRIPT_SANDBOXING: YES
+    # The network filter is a system extension, whose entitlements Apple has to
+    # issue, so both targets sign with the team's certificates and provisioning
+    # profiles. Scripts/install.sh exports a notarised Developer ID build.
+    DEVELOPMENT_TEAM: AR25V66TVY
+    CODE_SIGN_STYLE: Automatic
+    ENABLE_HARDENED_RUNTIME: YES
+    MARKETING_VERSION: "0.2.0"
+    CURRENT_PROJECT_VERSION: "3"
+targets:
+  Revoke:
+    type: application
+    platform: macOS
+    sources: [App, Shared]
+    dependencies:
+      - target: RevokeFilter
+        embed: true
+    # content-filter-provider is the value development profiles allow. Exporting
+    # for Developer ID turns it into content-filter-provider-systemextension.
+    entitlements:
+      path: App/Revoke.entitlements
+      properties:
+        com.apple.developer.system-extension.install: true
+        com.apple.developer.networking.networkextension: [content-filter-provider]
+    info:
+      path: App/Info.plist
+      properties:
+        CFBundleName: Revoke
+        CFBundleDisplayName: Revoke
+        CFBundlePackageType: $(PRODUCT_BUNDLE_PACKAGE_TYPE)
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        LSUIElement: true
+        LSApplicationCategoryType: public.app-category.utilities
+        NSHumanReadableCopyright: "GPL-3.0-or-later"
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.benjweaver.Revoke
+        GENERATE_INFOPLIST_FILE: NO
+        ENABLE_APP_SANDBOX: NO
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+  RevokeFilter:
+    type: system-extension
+    platform: macOS
+    sources: [Filter, Shared]
+    entitlements:
+      path: Filter/RevokeFilter.entitlements
+      properties:
+        com.apple.security.app-sandbox: true
+        com.apple.security.application-groups: [AR25V66TVY.dev.benjweaver.Revoke]
+        com.apple.developer.networking.networkextension: [content-filter-provider]
+    info:
+      path: Filter/Info.plist
+      properties:
+        CFBundleName: Revoke Filter
+        CFBundleDisplayName: Revoke Network Filter
+        CFBundlePackageType: $(PRODUCT_BUNDLE_PACKAGE_TYPE)
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        NSHumanReadableCopyright: "GPL-3.0-or-later"
+        NSSystemExtensionUsageDescription: Keeps the apps you revoke in Revoke off your local network.
+        NetworkExtension:
+          NEMachServiceName: AR25V66TVY.dev.benjweaver.Revoke.filter
+          NEProviderClasses:
+            com.apple.networkextension.filter-data: $(PRODUCT_MODULE_NAME).FilterDataProvider
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.benjweaver.Revoke.Filter
+        # macOS finds a system extension by its bundle name, which has to be its ID.
+        PRODUCT_NAME: dev.benjweaver.Revoke.Filter
+        PRODUCT_MODULE_NAME: RevokeFilter
+        GENERATE_INFOPLIST_FILE: NO
