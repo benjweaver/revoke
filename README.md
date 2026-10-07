@@ -26,6 +26,8 @@ Settings.
 
 ## Install
 
+On macOS:
+
 ```sh
 brew install --cask benjweaver/revoke/revoke
 ```
@@ -37,6 +39,15 @@ Revoke, give it Full Disk Access, and install the network filter from its settin
 
 To uninstall, choose **Remove Network Filter** in Revoke's settings first, so the
 filter goes too, then delete Revoke (`brew uninstall --cask revoke`).
+
+On Windows, [Revoke for Windows](https://github.com/benjweaver/revoke-windows) does the
+same job from the notification area. In PowerShell, with no admin rights:
+
+```powershell
+irm https://raw.githubusercontent.com/benjweaver/revoke-windows/main/packaging/windows/install.ps1 | iex
+```
+
+Its README covers updating and removing it, and what Windows lets it do.
 
 ## What it can't do, and why
 
