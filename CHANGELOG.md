@@ -5,6 +5,13 @@ All notable changes are listed here. The format follows
 [Semantic Versioning](https://semver.org/). Each release's notes on GitHub come
 from its section below.
 
+## [1.1.4] - 2026-10-09
+
+### Fixed
+
+- Tooltips in the panel no longer change how its glass background looks. They
+  sit just below what they describe, so they don't cover it.
+
 ## [1.1.3] - 2026-10-09
 
 ### Fixed
@@ -61,6 +68,7 @@ from its section below.
   deleted or replaced.
 - Apps from Anthropic and OpenAI are watched by default.
 
+[1.1.4]: https://github.com/benjweaver/revoke/releases/tag/v1.1.4
 [1.1.3]: https://github.com/benjweaver/revoke/releases/tag/v1.1.3
 [1.1.2]: https://github.com/benjweaver/revoke/releases/tag/v1.1.2
 [1.1.1]: https://github.com/benjweaver/revoke/releases/tag/v1.1.1

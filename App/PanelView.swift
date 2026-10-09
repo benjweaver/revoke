@@ -56,6 +56,7 @@ struct PanelView: View {
         }
         .padding(16)
         .frame(width: 460)
+        .tipHost()
     }
 
     /// The titles sit outside the list so they stay put while it scrolls.

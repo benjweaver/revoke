@@ -8,22 +8,148 @@ extension View {
     func tip(_ text: String) -> some View {
         modifier(TipModifier(text: text))
     }
+
+    /// Draws the tips inside this view instead of in a window of their own. The
+    /// menu bar panel needs this: another window in front of it changed how macOS
+    /// drew the panel's glass.
+    func tipHost() -> some View {
+        modifier(TipHost())
+    }
+}
+
+extension EnvironmentValues {
+    @Entry fileprivate var tipState: TipState?
 }
 
 private struct TipModifier: ViewModifier {
     let text: String
+    @Environment(\.tipState) private var host
     @State private var id = UUID()
+    /// Where this view is in the host, so the tip can sit just below it.
+    @State private var frame = CGRect.zero
 
     func body(content: Content) -> some View {
         content
             .accessibilityHint(text)
-            .onHover { Tooltip.shared.hover(text, id: id, isHovering: $0) }
-            .onDisappear { Tooltip.shared.end(id) }
+            .background {
+                if host != nil {
+                    GeometryReader { proxy in
+                        let current = proxy.frame(in: .named(TipHost.space))
+                        Color.clear
+                            .onAppear { frame = current }
+                            .onChange(of: current) { _, new in frame = new }
+                    }
+                }
+            }
+            .onHover { hovering in
+                if let host {
+                    host.hover(text, id: id, below: frame, isHovering: hovering)
+                } else {
+                    Tooltip.shared.hover(text, id: id, isHovering: hovering)
+                }
+            }
+            .onDisappear {
+                host?.end(id)
+                Tooltip.shared.end(id)
+            }
     }
 }
 
-/// One floating label shared by every `.tip`, drawn in its own window so the
-/// panel's edges don't clip it.
+/// The tip a host is showing, and the wait before it shows.
+@MainActor
+private final class TipState: ObservableObject {
+    struct Tip {
+        let text: String
+        let anchor: CGRect
+    }
+
+    @Published private(set) var current: Tip?
+    private var owner: UUID?
+    private var pending: Task<Void, Never>?
+
+    func hover(_ text: String, id: UUID, below anchor: CGRect, isHovering: Bool) {
+        guard isHovering else { return end(id) }
+        owner = id
+        pending?.cancel()
+        // Moving from one tip to the next shows the next straight away.
+        let delay: Duration = current == nil ? .milliseconds(600) : .zero
+        pending = Task { [weak self] in
+            try? await Task.sleep(for: delay)
+            guard !Task.isCancelled, let self, self.owner == id else { return }
+            self.current = Tip(text: text, anchor: anchor)
+        }
+    }
+
+    func end(_ id: UUID) {
+        if owner == id { hide() }
+    }
+
+    func hide() {
+        owner = nil
+        pending?.cancel()
+        current = nil
+    }
+}
+
+private struct TipHost: ViewModifier {
+    static let space = "tips"
+    @StateObject private var tips = TipState()
+
+    func body(content: Content) -> some View {
+        content
+            .coordinateSpace(.named(Self.space))
+            .environment(\.tipState, tips)
+            .overlay {
+                if let tip = tips.current {
+                    TipLayout(anchor: tip.anchor) { TipBubble(text: tip.text) }
+                        .allowsHitTesting(false)
+                }
+            }
+            // Like system tooltips, a click or closing the panel puts the tip away.
+            .simultaneousGesture(TapGesture().onEnded { tips.hide() })
+            .onReceive(NotificationCenter.default.publisher(for: NSPopover.willCloseNotification)) { _ in
+                tips.hide()
+            }
+    }
+}
+
+/// Puts the tip just below the view it describes, so it never covers it, and
+/// above instead when there's no room below. It stays inside the host.
+private struct TipLayout: Layout {
+    let anchor: CGRect
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        proposal.replacingUnspecifiedDimensions()
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        guard let tip = subviews.first else { return }
+        let margin: CGFloat = 6
+        let size = tip.sizeThatFits(ProposedViewSize(width: min(280, bounds.width - margin * 2), height: nil))
+        let x = min(max(anchor.midX - size.width / 2, margin), bounds.width - size.width - margin)
+        var y = anchor.maxY + 4
+        if y + size.height > bounds.height - margin { y = anchor.minY - size.height - 4 }
+        tip.place(at: CGPoint(x: bounds.minX + x, y: bounds.minY + y), proposal: ProposedViewSize(size))
+    }
+}
+
+private struct TipBubble: View {
+    let text: String
+
+    var body: some View {
+        Text(text)
+            .font(.system(size: NSFont.smallSystemFontSize))
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 5)
+            .background(Color(nsColor: .windowBackgroundColor), in: RoundedRectangle(cornerRadius: 6))
+            .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(Color(nsColor: .separatorColor), lineWidth: 0.5))
+            .shadow(color: .black.opacity(0.2), radius: 4, y: 2)
+    }
+}
+
+/// One floating label for tips outside a `tipHost`, such as in Settings, drawn in
+/// its own window so the window's edges don't clip it.
 @MainActor
 final class Tooltip {
     static let shared = Tooltip()
