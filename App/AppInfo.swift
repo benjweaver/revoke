@@ -19,7 +19,15 @@ enum AppInfo {
         "com.anthropic.claude-code": "Claude Code",
     ]
 
+    /// A line under the name for apps whose name alone doesn't say what they are.
+    private static let roles = [
+        "com.anthropic.claude-code": "Runs Claude's Code tab",
+        // OpenAI renamed the Codex app ChatGPT, keeping Codex's bundle ID.
+        "com.openai.codex": "Includes Codex",
+    ]
+
     static func name(_ client: Client) -> String { info(client).name }
+    static func role(_ client: Client) -> String? { client.bundleID.flatMap { roles[$0] } }
     static func icon(_ client: Client) -> NSImage { info(client).icon }
     static func isInstalled(_ client: Client) -> Bool { info(client).isInstalled }
 

@@ -161,9 +161,10 @@ struct PanelView: View {
 
     private func row(_ row: Row) -> some View {
         HStack(spacing: Self.columnSpacing) {
-            label(row, caption: row.deadline.map {
-                "Revokes at \($0.formatted(date: .omitted, time: .shortened))"
-            })
+            label(row, caption: [
+                AppInfo.role(row.client),
+                row.deadline.map { "Revokes at \($0.formatted(date: .omitted, time: .shortened))" },
+            ].compactMap { $0 }.joined(separator: " · ").nilIfEmpty)
             ForEach(Pane.allCases) { pane in
                 cell(row, pane).frame(width: Self.columnWidth)
             }
@@ -286,4 +287,8 @@ struct PanelButtonStyle: ButtonStyle {
             .opacity(configuration.isPressed ? 0.7 : isEnabled ? 1 : 0.4)
             .contentShape(Capsule())
     }
+}
+
+private extension String {
+    var nilIfEmpty: String? { isEmpty ? nil : self }
 }

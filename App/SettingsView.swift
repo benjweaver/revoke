@@ -58,7 +58,12 @@ struct SettingsView: View {
                                          set: { settings.setWatched(client, $0) })) {
                         HStack(spacing: 8) {
                             Image(nsImage: AppInfo.icon(client)).resizable().frame(width: 18, height: 18)
-                            Text(AppInfo.name(client))
+                            VStack(alignment: .leading, spacing: 0) {
+                                Text(AppInfo.name(client))
+                                if let role = AppInfo.role(client) {
+                                    Text(role).font(.caption).foregroundStyle(.secondary)
+                                }
+                            }
                         }
                     }
                     .tip(settings.isWatched(client)

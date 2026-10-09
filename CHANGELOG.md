@@ -5,6 +5,13 @@ All notable changes are listed here. The format follows
 [Semantic Versioning](https://semver.org/). Each release's notes on GitHub come
 from its section below.
 
+## [1.1.5] - 2026-10-09
+
+### Added
+
+- A line under Claude Code ("Runs Claude's Code tab") and ChatGPT ("Includes
+  Codex") in the panel and Settings, saying what each app is.
+
 ## [1.1.4] - 2026-10-09
 
 ### Fixed
@@ -68,6 +75,7 @@ from its section below.
   deleted or replaced.
 - Apps from Anthropic and OpenAI are watched by default.
 
+[1.1.5]: https://github.com/benjweaver/revoke/releases/tag/v1.1.5
 [1.1.4]: https://github.com/benjweaver/revoke/releases/tag/v1.1.4
 [1.1.3]: https://github.com/benjweaver/revoke/releases/tag/v1.1.3
 [1.1.2]: https://github.com/benjweaver/revoke/releases/tag/v1.1.2
