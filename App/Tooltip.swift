@@ -48,12 +48,9 @@ final class Tooltip {
         label.font = .toolTipsFont(ofSize: 0)
         label.textColor = .labelColor
         label.preferredMaxLayoutWidth = 280
-        let background = NSVisualEffectView()
-        background.material = .toolTip
-        background.state = .active
-        background.wantsLayer = true
-        background.layer?.cornerRadius = 6
-        background.layer?.masksToBounds = true
+        // A solid background rather than a material: on macOS 27 the tooltip material
+        // is Liquid Glass, and it smeared the panel's own glass under the tip.
+        let background = TipBackground()
         background.addSubview(label)
         panel.contentView = background
 
@@ -104,5 +101,24 @@ final class Tooltip {
         }
         panel.setFrame(NSRect(origin: origin, size: frameSize), display: true)
         panel.orderFrontRegardless()
+    }
+}
+
+/// A rounded, solid tip background that follows light and dark mode.
+private final class TipBackground: NSView {
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        wantsLayer = true
+        layer?.cornerRadius = 6
+        layer?.borderWidth = 0.5
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    override var wantsUpdateLayer: Bool { true }
+
+    override func updateLayer() {
+        layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor
+        layer?.borderColor = NSColor.separatorColor.cgColor
     }
 }

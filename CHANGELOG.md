@@ -5,6 +5,14 @@ All notable changes are listed here. The format follows
 [Semantic Versioning](https://semver.org/). Each release's notes on GitHub come
 from its section below.
 
+## [1.1.3] - 2026-10-09
+
+### Fixed
+
+- Tooltips no longer blur the panel's switches around them.
+- The status counts helpers as the app they belong to, so it says "Claude is
+  running" rather than "Claude and Claude Helper are running".
+
 ## [1.1.2] - 2026-10-09
 
 ### Added
@@ -53,6 +61,7 @@ from its section below.
   deleted or replaced.
 - Apps from Anthropic and OpenAI are watched by default.
 
+[1.1.3]: https://github.com/benjweaver/revoke/releases/tag/v1.1.3
 [1.1.2]: https://github.com/benjweaver/revoke/releases/tag/v1.1.2
 [1.1.1]: https://github.com/benjweaver/revoke/releases/tag/v1.1.1
 [1.1.0]: https://github.com/benjweaver/revoke/releases/tag/v1.1.0

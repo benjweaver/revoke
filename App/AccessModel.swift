@@ -40,6 +40,9 @@ final class AccessModel: ObservableObject {
     /// Bundle IDs of the apps running now, so the lock and the panel's dots follow
     /// apps as they launch and quit, even while the panel is open.
     @Published private(set) var runningIDs = Set<String>()
+    /// The same, with helpers counted as the app they're inside, so the status says
+    /// "Claude is running" rather than "Claude and Claude Helper are running".
+    @Published private(set) var runningAppIDs = Set<String>()
 
     private let settings: Settings
     let filter: NetworkFilter
@@ -65,7 +68,9 @@ final class AccessModel: ObservableObject {
             .receive(on: DispatchQueue.main)
             .sink { [weak self] apps in
                 let ids = Set(apps.compactMap(\.bundleIdentifier))
+                let appIDs = Set(apps.compactMap { Self.containingAppID($0) ?? $0.bundleIdentifier })
                 if ids != self?.runningIDs { self?.runningIDs = ids }
+                if appIDs != self?.runningAppIDs { self?.runningAppIDs = appIDs }
             }
         refresh()
     }
@@ -144,9 +149,15 @@ final class AccessModel: ObservableObject {
             .map(\.name)
     }
 
-    /// Watched apps that are running now.
+    /// Watched apps that are running now, helpers counted as their app.
     var runningNames: [String] {
-        runningIDs.filter { settings.isWatched(.bundle($0)) }.map { AppInfo.name(.bundle($0)) }
+        runningAppIDs.filter { settings.isWatched(.bundle($0)) }.map { AppInfo.name(.bundle($0)) }
+    }
+
+    /// The outermost app a helper sits inside, such as Claude.app for Claude Helper.
+    private nonisolated static func containingAppID(_ app: NSRunningApplication) -> String? {
+        guard let path = app.bundleURL?.path, let end = path.range(of: ".app/") else { return nil }
+        return Bundle(path: String(path[..<end.lowerBound]) + ".app")?.bundleIdentifier
     }
 
     /// Whether the app is running now, for the dot under its icon in the panel.
