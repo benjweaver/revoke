@@ -37,13 +37,17 @@ struct PanelView: View {
                 Button("Revoke All Watched") { model.revokeWatched(reason: nil) }
                     .buttonStyle(PanelButtonStyle(prominent: true))
                     .disabled(model.isRevoking)
-                if model.isRevoking { ProgressView().controlSize(.small) }
+                    .help("Switches off every permission the watched apps have, in all three lists. Running apps keep going but have to ask again.")
+                if model.isRevoking {
+                    ProgressView().controlSize(.small).help("Revoking…")
+                }
             }
             if let activity = model.lastActivity {
                 Text("\(activity.date.formatted(date: .omitted, time: .shortened)) · \(activity.text)")
                     .font(.caption)
                     .foregroundStyle(activity.isError ? AnyShapeStyle(.red) : AnyShapeStyle(.secondary))
                     .fixedSize(horizontal: false, vertical: true)
+                    .help(activity.isError ? "The last thing Revoke tried failed." : "The last thing Revoke did.")
             }
             Text("Switching access on opens System Settings, because macOS only lets you grant it there.")
                 .font(.caption)
@@ -65,7 +69,7 @@ struct PanelView: View {
                 }
                 .foregroundStyle(.secondary)
                 .frame(width: Self.columnWidth)
-                .help(pane.title)
+                .help(pane.explanation)
             }
         }
     }
@@ -73,6 +77,7 @@ struct PanelView: View {
     private func appList(watched: [Row], others: [Row], leftovers: [Row]) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             sectionTitle("Watched")
+                .help("Apps Revoke looks after: Revoke All Watched and the automatic options cover them. Choose which in Settings.")
             if watched.isEmpty {
                 Text("No watched apps are in these lists.").foregroundStyle(.secondary)
             }
@@ -80,6 +85,7 @@ struct PanelView: View {
 
             if !others.isEmpty {
                 sectionTitle("Other apps with access").padding(.top, 6)
+                    .help("Apps you don't watch that have Device Control or Screen Recording. Revoke lists them but never revokes them by itself.")
                 ForEach(others) { row($0) }
             }
 
@@ -90,6 +96,7 @@ struct PanelView: View {
                     Button("Remove All") { model.removeLeftovers() }
                         .buttonStyle(PanelButtonStyle(prominent: false))
                         .disabled(model.isRevoking)
+                        .help("Removes every deleted app's leftover entries from the privacy lists.")
                 }
                 .padding(.top, 6)
                 Text("macOS kept these permissions after the apps were deleted or replaced. Nothing installed can use them.")
@@ -106,6 +113,7 @@ struct PanelView: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text("Revoke").font(.headline)
                 Text(model.statusText).font(.subheadline).foregroundStyle(.secondary)
+                    .help(lockHelp)
             }
             Spacer()
             Button(action: openSettings) {
@@ -116,6 +124,17 @@ struct PanelView: View {
             .help("Settings")
             .accessibilityLabel("Settings")
         }
+    }
+
+    /// What the menu bar lock is showing, and why.
+    private var lockHelp: String {
+        if !model.snapshot.canReadTCC {
+            return "Revoke can't read the permissions list without Full Disk Access, so the lock shows a warning."
+        }
+        if !model.exposedNames.isEmpty || !model.runningNames.isEmpty {
+            return "The lock is open while a watched app is running or has Device Control or Screen Recording."
+        }
+        return "The lock is closed: no watched app is running or has Device Control or Screen Recording."
     }
 
     private var fullDiskAccessNotice: some View {
@@ -166,23 +185,28 @@ struct PanelView: View {
 
     private func label(_ row: Row, caption: String?) -> some View {
         HStack(spacing: 8) {
+            let isRunning = model.isRunning(row.client)
             Image(nsImage: row.icon)
                 .resizable()
                 .frame(width: 20, height: 20)
                 .overlay(alignment: .bottom) {
                     // Like the Dock's dot: the app is running right now.
-                    if model.isRunning(row.client) {
+                    if isRunning {
                         Circle().fill(.primary.opacity(0.7)).frame(width: 4, height: 4).offset(y: 6)
                     }
                 }
+                .help(isRunning ? "\(row.name) is running. The dot goes when it quits."
+                      : "\(row.name) isn't running.")
             VStack(alignment: .leading, spacing: 0) {
                 Text(row.name).lineLimit(1).truncationMode(.middle)
                 if let caption {
                     Text(caption).font(.caption2).foregroundStyle(.secondary)
+                        .help(row.deadline == nil ? caption
+                              : "The time limit in Settings switches this app's access off then.")
                 }
             }
         }
-        .help(row.client.key)
+        .help("\(row.name) (\(row.client.key))")
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 

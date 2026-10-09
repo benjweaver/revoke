@@ -17,8 +17,8 @@ settings:
     DEVELOPMENT_TEAM: AR25V66TVY
     CODE_SIGN_STYLE: Automatic
     ENABLE_HARDENED_RUNTIME: YES
-    MARKETING_VERSION: "1.1.1"
-    CURRENT_PROJECT_VERSION: "6"
+    MARKETING_VERSION: "1.1.2"
+    CURRENT_PROJECT_VERSION: "7"
 targets:
   Revoke:
     type: application

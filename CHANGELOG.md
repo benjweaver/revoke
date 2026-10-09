@@ -5,6 +5,20 @@ All notable changes are listed here. The format follows
 [Semantic Versioning](https://semver.org/). Each release's notes on GitHub come
 from its section below.
 
+## [1.1.2] - 2026-10-09
+
+### Added
+
+- Tooltips on everything in the panel and Settings, saying what each permission
+  lets an app do, what each button and option does, and why the lock is open or
+  closed.
+
+### Fixed
+
+- The running dots and the menu bar lock follow apps as they launch and quit,
+  even while the panel is open.
+- Clicking outside the panel closes it.
+
 ## [1.1.1] - 2026-10-09
 
 ### Fixed
@@ -39,6 +53,7 @@ from its section below.
   deleted or replaced.
 - Apps from Anthropic and OpenAI are watched by default.
 
+[1.1.2]: https://github.com/benjweaver/revoke/releases/tag/v1.1.2
 [1.1.1]: https://github.com/benjweaver/revoke/releases/tag/v1.1.1
 [1.1.0]: https://github.com/benjweaver/revoke/releases/tag/v1.1.0
 [1.0.0]: https://github.com/benjweaver/revoke/releases/tag/v1.0.0

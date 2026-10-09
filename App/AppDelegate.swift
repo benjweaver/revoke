@@ -10,6 +10,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem?
     private let popover = NSPopover()
     private var window: NSWindow?
+    /// Watches for clicks in other apps while the panel is open.
+    private var outsideClicks: Any?
     private var subscriptions = Set<AnyCancellable>()
 
     override init() {
@@ -31,6 +33,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         panel.sizingOptions = .preferredContentSize
         popover.contentViewController = panel
         popover.behavior = .transient
+        popover.delegate = self
         NSApp.mainMenu = Self.makeMainMenu()
 
         // objectWillChange fires before the change lands, so look a turn later.
@@ -43,8 +46,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let workspace = NSWorkspace.shared.notificationCenter
         workspace.addObserver(self, selector: #selector(appDidTerminate(_:)),
                               name: NSWorkspace.didTerminateApplicationNotification, object: nil)
-        workspace.addObserver(self, selector: #selector(appDidLaunch),
-                              name: NSWorkspace.didLaunchApplicationNotification, object: nil)
         workspace.addObserver(self, selector: #selector(willSleep),
                               name: NSWorkspace.willSleepNotification, object: nil)
         DistributedNotificationCenter.default().addObserver(
@@ -82,14 +83,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// An open lock while any watched app is running or has Device Control or Screen
     /// Recording, so a glance at the menu bar says whether anything was left on.
-    /// `quitting` is an app that just terminated and may still be listed as running.
-    private func updateIcon(quitting: pid_t? = nil) {
+    private func updateIcon() {
         guard let button = statusItem?.button else { return }
-        let isOpen = !model.exposedNames.isEmpty || !model.runningNames(excluding: quitting).isEmpty
+        let isOpen = !model.exposedNames.isEmpty || !model.runningNames.isEmpty
         let symbol = !model.snapshot.canReadTCC ? "lock.trianglebadge.exclamationmark"
             : isOpen ? "lock.open.fill" : "lock.fill"
         button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: model.statusText)
-        button.toolTip = model.statusText
+        button.toolTip = !model.snapshot.canReadTCC ? "Revoke: \(model.statusText)"
+            : isOpen ? "Revoke: \(model.statusText). The lock stays open until no watched app is running or has access."
+            : "Revoke: \(model.statusText). No watched app is running or has access."
     }
 
     @objc private func togglePanel() {
@@ -104,6 +106,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         model.refresh()
         NSApp.activate()
         popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+        // A transient popover only closes on outside clicks while Revoke is the
+        // active app, and macOS may turn down the activation, so close it here too.
+        // Global monitors see only other apps' events: clicks in the panel and on
+        // the menu bar icon still go to them.
+        outsideClicks = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown, .otherMouseDown]) { [weak self] _ in
+            MainActor.assumeIsolated { self?.popover.performClose(nil) }
+        }
     }
 
     @objc private func showSettings() {
@@ -125,11 +134,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
         else { return }
         model.appDidQuit(app)
-        updateIcon(quitting: app.processIdentifier)
-    }
-
-    @objc private func appDidLaunch(_ notification: Notification) {
-        updateIcon()
     }
 
     @objc private func willSleep() {
@@ -138,5 +142,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func screenLocked() {
         model.sleepOrLock(reason: "the screen locked")
+    }
+}
+
+extension AppDelegate: NSPopoverDelegate {
+    func popoverDidClose(_ notification: Notification) {
+        if let outsideClicks { NSEvent.removeMonitor(outsideClicks) }
+        outsideClicks = nil
     }
 }

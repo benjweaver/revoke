@@ -28,6 +28,18 @@ enum Pane: CaseIterable, Identifiable {
         }
     }
 
+    /// What the access lets an app do, for the column's tooltip.
+    var explanation: String {
+        switch self {
+        case .deviceControl:
+            "\(title): lets the app click, type and read what's on screen in other apps, which is how AI agents use your Mac."
+        case .screenRecording:
+            "\(title): lets the app see your screen and hear what your Mac plays."
+        case .localNetwork:
+            "\(title): lets the app reach devices on your network, such as routers, printers and other computers."
+        }
+    }
+
     var symbol: String {
         switch self {
         case .deviceControl: "cursorarrow.rays"

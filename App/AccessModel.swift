@@ -37,6 +37,9 @@ final class AccessModel: ObservableObject {
     @Published private(set) var snapshot = Snapshot()
     @Published private(set) var lastActivity: Activity?
     @Published private(set) var isRevoking = false
+    /// Bundle IDs of the apps running now, so the lock and the panel's dots follow
+    /// apps as they launch and quit, even while the panel is open.
+    @Published private(set) var runningIDs = Set<String>()
 
     private let settings: Settings
     let filter: NetworkFilter
@@ -45,6 +48,7 @@ final class AccessModel: ObservableObject {
     /// Revocations run one at a time, in the order they were asked for.
     private var queue: Task<Void, Never>?
     private var pending = 0
+    private var runningApps: AnyCancellable?
 
     init(settings: Settings, filter: NetworkFilter) {
         self.settings = settings
@@ -56,6 +60,13 @@ final class AccessModel: ObservableObject {
             MainActor.assumeIsolated { self?.refresh() }
         }
         settings.onChange = { [weak self] in self?.refresh() }
+        // KVO reports the list after it changes, so an app that just quit is gone.
+        runningApps = NSWorkspace.shared.publisher(for: \.runningApplications, options: [.initial, .new])
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] apps in
+                let ids = Set(apps.compactMap(\.bundleIdentifier))
+                if ids != self?.runningIDs { self?.runningIDs = ids }
+            }
         refresh()
     }
 
@@ -133,20 +144,14 @@ final class AccessModel: ObservableObject {
             .map(\.name)
     }
 
-    /// Watched apps that are running now. `quitting` is an app that just terminated
-    /// and may still be listed.
-    func runningNames(excluding quitting: pid_t? = nil) -> [String] {
-        NSWorkspace.shared.runningApplications.compactMap { app in
-            guard app.processIdentifier != quitting, let id = app.bundleIdentifier,
-                  settings.isWatched(.bundle(id)) else { return nil }
-            return AppInfo.name(.bundle(id))
-        }
+    /// Watched apps that are running now.
+    var runningNames: [String] {
+        runningIDs.filter { settings.isWatched(.bundle($0)) }.map { AppInfo.name(.bundle($0)) }
     }
 
     /// Whether the app is running now, for the dot under its icon in the panel.
     func isRunning(_ client: Client) -> Bool {
-        guard let id = client.bundleID else { return false }
-        return !NSRunningApplication.runningApplications(withBundleIdentifier: id).isEmpty
+        client.bundleID.map(runningIDs.contains) ?? false
     }
 
     var statusText: String {
@@ -155,7 +160,7 @@ final class AccessModel: ObservableObject {
         if !exposed.isEmpty {
             return "\(exposed.formatted(.list(type: .and))) \(exposed.count == 1 ? "has" : "have") access"
         }
-        let running = Set(runningNames()).sorted()
+        let running = Set(runningNames).sorted()
         if !running.isEmpty { return "\(running.formatted(.list(type: .and))) \(running.count == 1 ? "is" : "are") running" }
         return "Watched apps are locked down"
     }
