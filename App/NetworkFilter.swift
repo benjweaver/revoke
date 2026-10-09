@@ -96,9 +96,11 @@ final class NetworkFilter: NSObject, ObservableObject {
     /// Sends the full list of blocked apps, by code-signing identifier.
     func send(blocked identifiers: [String]) {
         guard isOn else { return }
-        let proxy = (connection ?? connect()).remoteObjectProxyWithErrorHandler { error in
+        // XPC calls the handler on its own queue, so it can't be main-actor isolated.
+        let onError: @Sendable (Error) -> Void = { error in
             log.error("Can't reach the network filter: \(error.localizedDescription, privacy: .public)")
-        } as? FilterControl
+        }
+        let proxy = (connection ?? connect()).remoteObjectProxyWithErrorHandler(onError) as? FilterControl
         proxy?.setBlocked(identifiers) {}
     }
 

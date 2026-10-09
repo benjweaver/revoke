@@ -5,6 +5,13 @@ All notable changes are listed here. The format follows
 [Semantic Versioning](https://semver.org/). Each release's notes on GitHub come
 from its section below.
 
+## [1.1.1] - 2026-10-09
+
+### Fixed
+
+- Revoke no longer crashes when the network filter can't be reached, for example
+  while the filter restarts after an update.
+
 ## [1.1.0] - 2026-10-09
 
 ### Changed
@@ -32,5 +39,6 @@ from its section below.
   deleted or replaced.
 - Apps from Anthropic and OpenAI are watched by default.
 
+[1.1.1]: https://github.com/benjweaver/revoke/releases/tag/v1.1.1
 [1.1.0]: https://github.com/benjweaver/revoke/releases/tag/v1.1.0
 [1.0.0]: https://github.com/benjweaver/revoke/releases/tag/v1.0.0
