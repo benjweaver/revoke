@@ -133,11 +133,31 @@ final class AccessModel: ObservableObject {
             .map(\.name)
     }
 
+    /// Watched apps that are running now. `quitting` is an app that just terminated
+    /// and may still be listed.
+    func runningNames(excluding quitting: pid_t? = nil) -> [String] {
+        NSWorkspace.shared.runningApplications.compactMap { app in
+            guard app.processIdentifier != quitting, let id = app.bundleIdentifier,
+                  settings.isWatched(.bundle(id)) else { return nil }
+            return AppInfo.name(.bundle(id))
+        }
+    }
+
+    /// Whether the app is running now, for the dot under its icon in the panel.
+    func isRunning(_ client: Client) -> Bool {
+        guard let id = client.bundleID else { return false }
+        return !NSRunningApplication.runningApplications(withBundleIdentifier: id).isEmpty
+    }
+
     var statusText: String {
         guard snapshot.canReadTCC else { return "Needs Full Disk Access to show status" }
-        let names = exposedNames
-        if names.isEmpty { return "Watched apps are locked down" }
-        return "\(names.formatted(.list(type: .and))) \(names.count == 1 ? "has" : "have") access"
+        let exposed = exposedNames
+        if !exposed.isEmpty {
+            return "\(exposed.formatted(.list(type: .and))) \(exposed.count == 1 ? "has" : "have") access"
+        }
+        let running = Set(runningNames()).sorted()
+        if !running.isEmpty { return "\(running.formatted(.list(type: .and))) \(running.count == 1 ? "is" : "are") running" }
+        return "Watched apps are locked down"
     }
 
     /// Every installed app the settings could list, watched ones first.

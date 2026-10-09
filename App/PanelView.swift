@@ -169,6 +169,12 @@ struct PanelView: View {
             Image(nsImage: row.icon)
                 .resizable()
                 .frame(width: 20, height: 20)
+                .overlay(alignment: .bottom) {
+                    // Like the Dock's dot: the app is running right now.
+                    if model.isRunning(row.client) {
+                        Circle().fill(.primary.opacity(0.7)).frame(width: 4, height: 4).offset(y: 6)
+                    }
+                }
             VStack(alignment: .leading, spacing: 0) {
                 Text(row.name).lineLimit(1).truncationMode(.middle)
                 if let caption {

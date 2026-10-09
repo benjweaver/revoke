@@ -5,6 +5,14 @@ All notable changes are listed here. The format follows
 [Semantic Versioning](https://semver.org/). Each release's notes on GitHub come
 from its section below.
 
+## [1.1.0] - 2026-10-09
+
+### Changed
+
+- The menu bar lock now opens while any watched app is running, not only while
+  one has access, and closes when none is. The status text says which are running.
+- The panel shows a dot under the icon of each app that is running.
+
 ## [1.0.0] - 2026-10-04
 
 ### Added
@@ -24,4 +32,5 @@ from its section below.
   deleted or replaced.
 - Apps from Anthropic and OpenAI are watched by default.
 
+[1.1.0]: https://github.com/benjweaver/revoke/releases/tag/v1.1.0
 [1.0.0]: https://github.com/benjweaver/revoke/releases/tag/v1.0.0

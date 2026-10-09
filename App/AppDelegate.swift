@@ -43,6 +43,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let workspace = NSWorkspace.shared.notificationCenter
         workspace.addObserver(self, selector: #selector(appDidTerminate(_:)),
                               name: NSWorkspace.didTerminateApplicationNotification, object: nil)
+        workspace.addObserver(self, selector: #selector(appDidLaunch),
+                              name: NSWorkspace.didLaunchApplicationNotification, object: nil)
         workspace.addObserver(self, selector: #selector(willSleep),
                               name: NSWorkspace.willSleepNotification, object: nil)
         DistributedNotificationCenter.default().addObserver(
@@ -78,12 +80,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return false
     }
 
-    /// An open lock while any watched app has Device Control or Screen Recording,
-    /// so a glance at the menu bar says whether anything was left on.
-    private func updateIcon() {
+    /// An open lock while any watched app is running or has Device Control or Screen
+    /// Recording, so a glance at the menu bar says whether anything was left on.
+    /// `quitting` is an app that just terminated and may still be listed as running.
+    private func updateIcon(quitting: pid_t? = nil) {
         guard let button = statusItem?.button else { return }
+        let isOpen = !model.exposedNames.isEmpty || !model.runningNames(excluding: quitting).isEmpty
         let symbol = !model.snapshot.canReadTCC ? "lock.trianglebadge.exclamationmark"
-            : model.exposedNames.isEmpty ? "lock.fill" : "lock.open.fill"
+            : isOpen ? "lock.open.fill" : "lock.fill"
         button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: model.statusText)
         button.toolTip = model.statusText
     }
@@ -121,6 +125,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
         else { return }
         model.appDidQuit(app)
+        updateIcon(quitting: app.processIdentifier)
+    }
+
+    @objc private func appDidLaunch(_ notification: Notification) {
+        updateIcon()
     }
 
     @objc private func willSleep() {
