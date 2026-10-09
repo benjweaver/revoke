@@ -37,9 +37,9 @@ struct PanelView: View {
                 Button("Revoke All Watched") { model.revokeWatched(reason: nil) }
                     .buttonStyle(PanelButtonStyle(prominent: true))
                     .disabled(model.isRevoking)
-                    .help("Switches off every permission the watched apps have, in all three lists. Running apps keep going but have to ask again.")
+                    .tip("Switches off every permission the watched apps have, in all three lists. Running apps keep going but have to ask again.")
                 if model.isRevoking {
-                    ProgressView().controlSize(.small).help("Revoking…")
+                    ProgressView().controlSize(.small).tip("Revoking…")
                 }
             }
             if let activity = model.lastActivity {
@@ -47,7 +47,7 @@ struct PanelView: View {
                     .font(.caption)
                     .foregroundStyle(activity.isError ? AnyShapeStyle(.red) : AnyShapeStyle(.secondary))
                     .fixedSize(horizontal: false, vertical: true)
-                    .help(activity.isError ? "The last thing Revoke tried failed." : "The last thing Revoke did.")
+                    .tip(activity.isError ? "The last thing Revoke tried failed." : "The last thing Revoke did.")
             }
             Text("Switching access on opens System Settings, because macOS only lets you grant it there.")
                 .font(.caption)
@@ -69,7 +69,7 @@ struct PanelView: View {
                 }
                 .foregroundStyle(.secondary)
                 .frame(width: Self.columnWidth)
-                .help(pane.explanation)
+                .tip(pane.explanation)
             }
         }
     }
@@ -77,7 +77,7 @@ struct PanelView: View {
     private func appList(watched: [Row], others: [Row], leftovers: [Row]) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             sectionTitle("Watched")
-                .help("Apps Revoke looks after: Revoke All Watched and the automatic options cover them. Choose which in Settings.")
+                .tip("Apps Revoke looks after: Revoke All Watched and the automatic options cover them. Choose which in Settings.")
             if watched.isEmpty {
                 Text("No watched apps are in these lists.").foregroundStyle(.secondary)
             }
@@ -85,7 +85,7 @@ struct PanelView: View {
 
             if !others.isEmpty {
                 sectionTitle("Other apps with access").padding(.top, 6)
-                    .help("Apps you don't watch that have Device Control or Screen Recording. Revoke lists them but never revokes them by itself.")
+                    .tip("Apps you don't watch that have Device Control or Screen Recording. Revoke lists them but never revokes them by itself.")
                 ForEach(others) { row($0) }
             }
 
@@ -96,7 +96,7 @@ struct PanelView: View {
                     Button("Remove All") { model.removeLeftovers() }
                         .buttonStyle(PanelButtonStyle(prominent: false))
                         .disabled(model.isRevoking)
-                        .help("Removes every deleted app's leftover entries from the privacy lists.")
+                        .tip("Removes every deleted app's leftover entries from the privacy lists.")
                 }
                 .padding(.top, 6)
                 Text("macOS kept these permissions after the apps were deleted or replaced. Nothing installed can use them.")
@@ -113,7 +113,7 @@ struct PanelView: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text("Revoke").font(.headline)
                 Text(model.statusText).font(.subheadline).foregroundStyle(.secondary)
-                    .help(lockHelp)
+                    .tip(lockHelp)
             }
             Spacer()
             Button(action: openSettings) {
@@ -121,7 +121,7 @@ struct PanelView: View {
             }
             .buttonStyle(.plain)
             .foregroundStyle(.secondary)
-            .help("Settings")
+            .tip("Settings")
             .accessibilityLabel("Settings")
         }
     }
@@ -179,7 +179,7 @@ struct PanelView: View {
                 .buttonStyle(PanelButtonStyle(prominent: false))
                 .disabled(model.isRevoking)
                 .frame(width: Self.columnWidth)
-                .help("Remove \(row.client.key) from the privacy lists.")
+                .tip("Remove \(row.client.key) from the privacy lists.")
         }
     }
 
@@ -195,18 +195,18 @@ struct PanelView: View {
                         Circle().fill(.primary.opacity(0.7)).frame(width: 4, height: 4).offset(y: 6)
                     }
                 }
-                .help(isRunning ? "\(row.name) is running. The dot goes when it quits."
+                .tip(isRunning ? "\(row.name) is running. The dot goes when it quits."
                       : "\(row.name) isn't running.")
             VStack(alignment: .leading, spacing: 0) {
                 Text(row.name).lineLimit(1).truncationMode(.middle)
+                    .tip("\(row.name) (\(row.client.key))")
                 if let caption {
                     Text(caption).font(.caption2).foregroundStyle(.secondary)
-                        .help(row.deadline == nil ? caption
+                        .tip(row.deadline == nil ? caption
                               : "The time limit in Settings switches this app's access off then.")
                 }
             }
         }
-        .help("\(row.name) (\(row.client.key))")
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
@@ -215,14 +215,14 @@ struct PanelView: View {
         if pane.tccService != nil && !model.snapshot.canReadTCC {
             Image(systemName: "questionmark")
                 .foregroundStyle(.tertiary)
-                .help("Revoke needs Full Disk Access to see this.")
+                .tip("Revoke needs Full Disk Access to see this.")
         } else {
             Toggle(pane.title, isOn: Binding(
                 get: { row.isAllowed(pane) },
                 set: { model.set(pane, on: $0, for: row.client) }))
                 .toggleStyle(AccessSwitchStyle())
                 .disabled(model.isRevoking)
-                .help(help(row, pane))
+                .tip(help(row, pane))
         }
     }
 

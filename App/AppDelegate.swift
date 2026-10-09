@@ -147,6 +147,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
 extension AppDelegate: NSPopoverDelegate {
     func popoverDidClose(_ notification: Notification) {
+        Tooltip.shared.hide()
         if let outsideClicks { NSEvent.removeMonitor(outsideClicks) }
         outsideClicks = nil
     }
