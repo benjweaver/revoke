@@ -52,6 +52,10 @@ final class AccessModel: ObservableObject {
     private var queue: Task<Void, Never>?
     private var pending = 0
     private var runningApps: AnyCancellable?
+    /// Watched apps with something running, by bundle ID, for Stop App.
+    @Published private(set) var stoppableIDs = Set<String>()
+    /// Checks that apps haven't taken their links back from Revoke.
+    private var linkTimer: Timer?
 
     init(settings: Settings, filter: NetworkFilter) {
         self.settings = settings
@@ -72,6 +76,16 @@ final class AccessModel: ObservableObject {
                 if ids != self?.runningIDs { self?.runningIDs = ids }
                 if appIDs != self?.runningAppIDs { self?.runningAppIDs = appIDs }
             }
+        // Apps make themselves their links' handler again (ChatGPT each time it starts,
+        // Claude Code daily), so look every couple of seconds while Revoke stands in.
+        let timer = Timer(timeInterval: 2, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self, !self.settings.linksBlocked.isEmpty, self.pending == 0 else { return }
+                self.keepLinksBlocked()
+            }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        linkTimer = timer
         refresh()
     }
 
@@ -87,8 +101,55 @@ final class AccessModel: ObservableObject {
                 next.entries[client, default: [:]][.localNetwork] = Entry(access: access)
             }
         }
+        next.links = readLinks(known: next.entries.keys)
+        for (client, links) in next.links {
+            next.entries[client, default: [:]][.links] = Entry(access: links.open.isEmpty ? .denied : .allowed)
+        }
         if next != snapshot { snapshot = next }
         enforceTimeLimit()
+    }
+
+    /// Looks for the watched apps that have something running, for Stop App. That takes
+    /// a look at every process, so it's done when the panel opens rather than each refresh.
+    func refreshRunning() {
+        let stoppable = Set(Processes.pids(of: watchedBundleIDs).keys)
+        if stoppable != stoppableIDs { stoppableIDs = stoppable }
+    }
+
+    /// Each app's links: the ones other apps can open it with, and the ones Revoke
+    /// stands in for. Apps are looked for among those in the privacy lists, watched by
+    /// choice or by default, running, or that Revoke holds links for.
+    private func readLinks(known: some Sequence<Client>) -> [Client: AppLinks] {
+        var ids = Set(known.compactMap(\.bundleID))
+        ids.formUnion(settings.addedClients.compactMap(\.bundleID))
+        ids.formUnion(runningAppIDs.filter { settings.isWatched(.bundle($0)) })
+        ids.formUnion(settings.linksBlocked)
+        ids.formUnion(settings.linkOwners.values.map(\.bundleID))
+        ids.formUnion(AppInfo.knownLinkApps)
+        let me = Bundle.main.bundleIdentifier
+        var result: [Client: AppLinks] = [:]
+        for id in ids {
+            guard let app = NSWorkspace.shared.urlForApplication(withBundleIdentifier: id) else { continue }
+            var links = AppLinks()
+            for link in AppInfo.declaredLinks(app) {
+                guard let handler = Links.handler(for: link), let handlerID = Links.bundleID(ofAppAt: handler) else { continue }
+                if handlerID == id {
+                    links.open.append(link)
+                } else if handlerID == me, settings.linkOwners[link]?.bundleID == id {
+                    links.guarded.append(link)
+                }
+            }
+            if links.isEmpty { continue }
+            let client = Client.bundle(AppInfo.linkClient(id))
+            result[client, default: AppLinks()].merge(links)
+        }
+        return result
+    }
+
+    /// Every watched app, by bundle ID, running or in a list.
+    private var watchedBundleIDs: [String] {
+        Set(snapshot.entries.keys).union(settings.addedClients).union(runningAppIDs.map(Client.bundle))
+            .filter(settings.isWatched).compactMap(\.bundleID)
     }
 
     // MARK: - Reading
@@ -104,6 +165,7 @@ final class AccessModel: ObservableObject {
         }
         return makeRows(all.filter { client, entries in
             guard settings.isWatched(client) == watched, !isMissing(client), !isHidden(client) else { return false }
+            if !watched && settings.hidden.contains(client.key) { return false }
             return watched || entries[.deviceControl]?.access == .allowed
                 || entries[.screenRecording]?.access == .allowed
         })
@@ -196,14 +258,16 @@ final class AccessModel: ObservableObject {
     /// can change command-line tools, so those open it. Local Network is Revoke's
     /// own block once the network filter is on, and System Settings' switch before.
     func set(_ pane: Pane, on: Bool, for client: Client) {
-        if pane == .localNetwork, filter.isOn, let id = client.bundleID {
+        if pane == .links {
+            if on { giveLinksBack([client]) } else { revoke([client], panes: [.links], reason: nil) }
+        } else if pane == .localNetwork, filter.isOn, let id = client.bundleID {
             let name = AppInfo.name(client)
             if on {
                 settings.allowLocalNetwork(id)
                 lastActivity = Activity(text: "Stopped blocking Local Network for \(name)", isError: false)
                 // macOS's own switch has to be on too.
-                if snapshot.entries[client]?[.localNetwork]?.access != .allowed {
-                    NSWorkspace.shared.open(pane.settingsURL)
+                if snapshot.entries[client]?[.localNetwork]?.access != .allowed, let url = pane.settingsURL {
+                    NSWorkspace.shared.open(url)
                 }
             } else {
                 settings.blockLocalNetwork([id])
@@ -213,8 +277,8 @@ final class AccessModel: ObservableObject {
             sendBlocklist()
         } else if !on, !pane.tccutilServices.isEmpty, client.bundleID != nil {
             revoke([client], panes: [pane], reason: nil)
-        } else {
-            NSWorkspace.shared.open(pane.settingsURL)
+        } else if let url = pane.settingsURL {
+            NSWorkspace.shared.open(url)
         }
     }
 
@@ -243,12 +307,17 @@ final class AccessModel: ObservableObject {
         guard !ids.isEmpty else { return }
         // Notice level keeps a record: log show --predicate 'subsystem == "dev.benjweaver.Revoke"'
         log.notice("Revoking \(panes.map(\.shortTitle), privacy: .public) for \(ids, privacy: .public)")
+        enqueue { await self.perform(ids: ids, panes: panes, reason: reason) }
+    }
+
+    /// Runs after everything already asked for, one thing at a time.
+    private func enqueue(_ work: @escaping @MainActor () async -> Void) {
         pending += 1
         isRevoking = true
         let previous = queue
         queue = Task {
             await previous?.value
-            await perform(ids: ids, panes: panes, reason: reason)
+            await work()
             pending -= 1
             isRevoking = pending > 0
             if pending == 0 { enforceTimeLimit() }
@@ -265,9 +334,18 @@ final class AccessModel: ObservableObject {
             settings.blockLocalNetwork(newlyBlocked)
             sendBlocklist()
         }
-        let services = panes.flatMap(\.tccutilServices)
         var failures: [String: String] = [:]
-        for id in ids {
+        // Links. Automatic runs leave file types be: macOS asks the person to confirm
+        // each one, and nobody may be there to answer.
+        if panes.contains(.links) {
+            for id in ids where !isMissing(.bundle(id)) {
+                if let error = await takeLinks(of: .bundle(id), files: reason == nil) {
+                    failures[AppInfo.name(.bundle(id))] = error
+                }
+            }
+        }
+        let services = panes.flatMap(\.tccutilServices)
+        for id in ids where !services.isEmpty {
             let client = Client.bundle(id)
             if let error = await Revoker.reset(services, for: id, installed: !isMissing(client)) {
                 log.error("tccutil reset \(services, privacy: .public) \(id, privacy: .public): \(error, privacy: .public)")
@@ -294,7 +372,10 @@ final class AccessModel: ObservableObject {
         }
         let what = panes.count == 1 ? panes[0].shortTitle : "access"
         var changes: [String] = []
-        if !revoked.isEmpty { changes.append("revoked \(what) for \(revoked.formatted(.list(type: .and)))") }
+        if !revoked.isEmpty {
+            changes.append(panes == [.links] ? "switched Links off for \(revoked.formatted(.list(type: .and)))"
+                : "revoked \(what) for \(revoked.formatted(.list(type: .and)))")
+        }
         if cleared > 0 { changes.append("cleared what \(cleared) deleted \(cleared == 1 ? "app" : "apps") left behind") }
 
         var text: String
@@ -313,6 +394,143 @@ final class AccessModel: ObservableObject {
         if let reason { text += " when \(reason)" }
         log.notice("\(text, privacy: .public)")
         lastActivity = Activity(text: text, isError: !failures.isEmpty)
+    }
+
+    /// Something worth a line in the panel that happened outside the model.
+    func note(_ text: String) {
+        lastActivity = Activity(text: text, isError: false)
+    }
+
+    // MARK: - Links
+
+    /// Makes Revoke the handler for every link the app opens itself, saving which app
+    /// had each to give back. Returns why something failed, if it did.
+    private func takeLinks(of client: Client, files: Bool) async -> String? {
+        guard let id = client.bundleID, let links = snapshot.links[client] else { return nil }
+        settings.setLinksBlocked(id, true)
+        var error: String?
+        for link in links.open where files || !link.isFile {
+            do {
+                if let owner = try await Links.take(link, for: Bundle.main.bundleURL) {
+                    settings.setLinkOwner(owner, for: link)
+                    log.notice("Took \(link.description, privacy: .public) from \(owner.bundleID, privacy: .public)")
+                }
+            } catch let failure {
+                log.error("Couldn't take \(link.description, privacy: .public): \(failure.localizedDescription, privacy: .public)")
+                error = error ?? failure.localizedDescription
+            }
+        }
+        refresh()
+        return error
+    }
+
+    /// Gives apps back the links Revoke stands in for, and stops asking about them.
+    func giveLinksBack(_ clients: [Client]) {
+        enqueue { await self.performGiveLinksBack(clients) }
+    }
+
+    /// Every app's links, as when Revoke is about to be removed.
+    func giveAllLinksBack() {
+        let clients = Set(settings.linksBlocked.map(Client.bundle))
+            .union(settings.linkOwners.values.map { .bundle(AppInfo.linkClient($0.bundleID)) })
+        enqueue { await self.performGiveLinksBack(Array(clients), all: true) }
+    }
+
+    private func performGiveLinksBack(_ clients: [Client], all: Bool = false) async {
+        let ids = Set(clients.compactMap(\.bundleID))
+        for id in ids { settings.setLinksBlocked(id, false) }
+        let mine = settings.linkOwners.filter { ids.contains(AppInfo.linkClient($0.value.bundleID)) }
+        let (restored, failure) = await Self.restore(mine, settings: settings)
+        refresh()
+        let names = ids.map { AppInfo.name(.bundle($0)) }.sorted()
+        let text: String
+        if let failure {
+            text = "Couldn't give every link back: \(failure)"
+        } else if all {
+            text = restored == 0 ? "No app's links needed giving back" : "Gave every app its links back"
+        } else {
+            text = "\(names.formatted(.list(type: .and))) \(names.count == 1 ? "opens" : "open") from links and files again"
+        }
+        log.notice("\(text, privacy: .public)")
+        lastActivity = Activity(text: text, isError: failure != nil)
+    }
+
+    /// Gives each link back to its app, where Revoke still has it. Returns how many
+    /// went back, and why one didn't.
+    static func restore(_ owners: [Link: LinkOwner], settings: Settings) async -> (Int, String?) {
+        let me = Bundle.main.bundleIdentifier
+        var restored = 0
+        var failure: String?
+        for (link, owner) in owners.sorted(by: { $0.key < $1.key }) {
+            // Something else took it since; it isn't Revoke's to give.
+            guard let handler = Links.handler(for: link), Links.bundleID(ofAppAt: handler) == me else {
+                settings.setLinkOwner(nil, for: link)
+                continue
+            }
+            do {
+                try await Links.restore(link, to: owner)
+                settings.setLinkOwner(nil, for: link)
+                restored += 1
+                log.notice("Gave \(link.description, privacy: .public) back to \(owner.bundleID, privacy: .public)")
+            } catch {
+                log.error("Couldn't give \(link.description, privacy: .public) back: \(error.localizedDescription, privacy: .public)")
+                failure = failure ?? error.localizedDescription
+            }
+        }
+        return (restored, failure)
+    }
+
+    /// Takes link schemes back from apps that made themselves their handler again, as
+    /// ChatGPT does each time it starts. File types are left, since macOS would ask
+    /// the person out of nowhere; the switch shows they're open again.
+    private func keepLinksBlocked() {
+        // Only links can have changed hands in between, so look at those first.
+        guard readLinks(known: snapshot.entries.keys) != snapshot.links else { return }
+        refresh()
+        let retaken = snapshot.links.filter { client, links in
+            client.bundleID.map(settings.linksBlocked.contains) == true && links.open.contains { !$0.isFile }
+        }
+        guard !retaken.isEmpty else { return }
+        enqueue {
+            var names: [String] = []
+            for client in retaken.keys.sorted(by: { $0.key < $1.key }) {
+                let before = self.snapshot.links[client]?.open.filter { !$0.isFile } ?? []
+                _ = await self.takeLinks(of: client, files: false)
+                if self.snapshot.links[client]?.open.filter({ !$0.isFile }) != before { names.append(AppInfo.name(client)) }
+            }
+            guard !names.isEmpty else { return }
+            let text = "\(names.formatted(.list(type: .and))) registered \(names.count == 1 ? "its" : "their") links again, so Revoke took them back"
+            log.notice("\(text, privacy: .public)")
+            self.lastActivity = Activity(text: text, isError: false)
+        }
+    }
+
+    // MARK: - Stopping apps
+
+    /// Stops the app, its helpers, and everything they started.
+    func stop(_ client: Client) {
+        guard let id = client.bundleID else { return }
+        enqueue { await self.performStop([id], none: "\(AppInfo.name(client)) isn't running") }
+    }
+
+    /// Stops every watched app that way, and leaves their switches as they are.
+    func stopAll() {
+        let ids = watchedBundleIDs
+        enqueue { await self.performStop(ids, none: "No watched apps are running") }
+    }
+
+    private func performStop(_ ids: [String], none: String) async {
+        let found = Processes.pids(of: ids)
+        guard !found.isEmpty else {
+            lastActivity = Activity(text: none, isError: false)
+            return
+        }
+        let count = await Processes.stop(found.values.reduce(into: Set()) { $0.formUnion($1) })
+        let names = found.keys.map { AppInfo.name(.bundle($0)) }.sorted()
+        let text = "Stopped \(names.formatted(.list(type: .and))) (\(count) \(count == 1 ? "process" : "processes"))"
+        log.notice("\(text, privacy: .public)")
+        lastActivity = Activity(text: text, isError: false)
+        refreshRunning()
     }
 
     // MARK: - Automatic revoking
@@ -364,7 +582,7 @@ final class AccessModel: ObservableObject {
                 guard let deadline = deadline(for: entries[pane]) else { continue }
                 if deadline <= now { due.append(pane) } else { next = min(next ?? deadline, deadline) }
             }
-            if !due.isEmpty { revoke([client], panes: due, reason: "its time limit ran out") }
+            if !due.isEmpty { revoke([client], panes: due + [.links], reason: "its time limit ran out") }
         }
 
         if let next {

@@ -34,6 +34,19 @@ struct SettingsView: View {
             }
 
             Section {
+                Text("Web pages, emails and documents can open an agent with a link (claude://, codex://, claude-cli://) or a file (.skill), carrying instructions for it, even while it's quit. Switch an app's Links off in the panel and macOS opens Revoke instead, which shows you the link and opens the app only if you say yes.")
+                    .fixedSize(horizontal: false, vertical: true)
+                Button("Give All Links Back") { model.giveAllLinksBack() }
+                    .disabled(settings.linksBlocked.isEmpty && settings.linkOwners.isEmpty)
+                    .tip("Makes each app the handler for its own links and files again, as before Revoke stood in. Do this before deleting Revoke.")
+            } header: {
+                Text("Links")
+            } footer: {
+                Text("Link schemes change hands without a word. macOS asks you to confirm each file type, when Revoke takes it and when it gives it back, so the automatic options leave file types alone.")
+                    .foregroundStyle(.secondary)
+            }
+
+            Section {
                 Toggle("When a watched app quits", isOn: $settings.revokeOnQuit)
                     .tip("When the last open app from a developer quits, revoke access for all of that developer's watched apps.")
                 Toggle("After a time limit", isOn: $settings.revokeAfterLimit)
@@ -48,7 +61,7 @@ struct SettingsView: View {
             } header: {
                 Text("Revoke automatically")
             } footer: {
-                Text("Quitting an app revokes every watched app from the same developer once none of them are open, so quitting ChatGPT also covers Codex Computer Use. The time limit counts from when access was switched on.")
+                Text("Quitting an app revokes every watched app from the same developer once none of them are open, so quitting ChatGPT also covers Codex Computer Use. The time limit counts from when access was switched on. Each of these switches Links off too.")
                     .foregroundStyle(.secondary)
             }
 
@@ -77,6 +90,26 @@ struct SettingsView: View {
                     .foregroundStyle(.secondary)
             }
 
+            if !settings.hidden.isEmpty {
+                Section {
+                    ForEach(settings.hiddenClients.sorted { AppInfo.name($0).localizedStandardCompare(AppInfo.name($1)) == .orderedAscending }, id: \.self) { client in
+                        HStack(spacing: 8) {
+                            Image(nsImage: AppInfo.icon(client)).resizable().frame(width: 18, height: 18)
+                            Text(AppInfo.name(client))
+                            Spacer()
+                            Button("Show") { settings.setHidden(client, false) }
+                                .accessibilityLabel("Show \(AppInfo.name(client))")
+                                .tip("Lists \(AppInfo.name(client)) (\(client.key)) under other apps with access again.")
+                        }
+                    }
+                } header: {
+                    Text("Hidden apps")
+                } footer: {
+                    Text("Hidden from the panel's list of other apps with access. Hiding an app doesn't change its access. Right-click an app in the panel to hide it.")
+                        .foregroundStyle(.secondary)
+                }
+            }
+
             Section {
                 // A custom binding rather than onChange, so correcting the toggle after a
                 // failure doesn't register or unregister again.
@@ -96,7 +129,7 @@ struct SettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .frame(width: 460, height: 640)
+        .frame(width: 460, height: 700)
         // Login Items and Full Disk Access can change in System Settings while this
         // window is behind it, so read them again whenever it comes forward.
         .onReceive(NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)) { _ in

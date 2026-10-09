@@ -7,6 +7,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let settings: Settings
     private let filter: NetworkFilter
     private let model: AccessModel
+    private let prompt: LinkPrompt
     private var statusItem: NSStatusItem?
     private let popover = NSPopover()
     private var window: NSWindow?
@@ -18,13 +19,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         settings = Settings()
         filter = NetworkFilter()
         model = AccessModel(settings: settings, filter: filter)
+        prompt = LinkPrompt(settings: settings)
         super.init()
+        prompt.onActivity = { [weak model] in model?.note($0) }
+    }
+
+    /// macOS opened Revoke for a link or a file it stands in for. The Apple event says
+    /// which process asked, so the question can name it.
+    func application(_ application: NSApplication, open urls: [URL]) {
+        let event = NSAppleEventManager.shared().currentAppleEvent
+        let sender = event?.attributeDescriptor(forKeyword: AEKeyword(keySenderPIDAttr))?.int32Value
+        prompt.receive(urls, sender: sender)
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         item.button?.target = self
         item.button?.action = #selector(togglePanel)
+        // A right click shows a menu instead of the panel.
+        item.button?.sendAction(on: [.leftMouseUp, .rightMouseUp])
         statusItem = item
 
         let panel = NSHostingController(rootView: PanelView(model: model, settings: settings, filter: filter) { [weak self] in
@@ -96,6 +109,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func togglePanel() {
         guard let button = statusItem?.button else { return }
+        if let event = NSApp.currentEvent,
+           event.type == .rightMouseUp || event.modifierFlags.contains(.control) {
+            popover.performClose(nil)
+            showMenu()
+            return
+        }
         if popover.isShown {
             popover.performClose(nil)
             return
@@ -104,6 +123,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // or deleted, so read everything fresh.
         AppInfo.forget()
         model.refresh()
+        model.refreshRunning()
         NSApp.activate()
         popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
         // A transient popover only closes on outside clicks while Revoke is the
@@ -114,6 +134,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             MainActor.assumeIsolated { self?.popover.performClose(nil) }
         }
     }
+
+    private func showMenu() {
+        let menu = NSMenu()
+        menu.addItem(withTitle: "Revoke All Watched", action: #selector(revokeAll), keyEquivalent: "").target = self
+        menu.addItem(withTitle: "Stop All Apps", action: #selector(stopAll), keyEquivalent: "").target = self
+        menu.addItem(.separator())
+        menu.addItem(withTitle: "Settings…", action: #selector(showSettings), keyEquivalent: "").target = self
+        menu.addItem(withTitle: "Quit Revoke", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "")
+        statusItem?.menu = menu
+        statusItem?.button?.performClick(nil)
+        statusItem?.menu = nil
+    }
+
+    @objc private func revokeAll() { model.revokeWatched(reason: nil) }
+
+    @objc private func stopAll() { model.stopAll() }
 
     @objc private func showSettings() {
         popover.performClose(nil)

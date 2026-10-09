@@ -37,7 +37,11 @@ struct PanelView: View {
                 Button("Revoke All Watched") { model.revokeWatched(reason: nil) }
                     .buttonStyle(PanelButtonStyle(prominent: true))
                     .disabled(model.isRevoking)
-                    .tip("Switches off every permission the watched apps have, in all three lists. Running apps keep going but have to ask again.")
+                    .tip("Switches off every switch the watched apps have, Links included. Running apps keep going but have to ask again.")
+                Button("Stop All Apps") { model.stopAll() }
+                    .buttonStyle(PanelButtonStyle(prominent: false))
+                    .disabled(model.isRevoking)
+                    .tip("Stops every watched app, its helpers, and everything they started, such as an agent's shells and tools. The switches stay as they are.")
                 if model.isRevoking {
                     ProgressView().controlSize(.small).tip("Revoking…")
                 }
@@ -55,7 +59,7 @@ struct PanelView: View {
                 .fixedSize(horizontal: false, vertical: true)
         }
         .padding(16)
-        .frame(width: 460)
+        .frame(width: 540)
         .tipHost()
     }
 
@@ -78,7 +82,7 @@ struct PanelView: View {
     private func appList(watched: [Row], others: [Row], leftovers: [Row]) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             sectionTitle("Watched")
-                .tip("Apps Revoke looks after: Revoke All Watched and the automatic options cover them. Choose which in Settings.")
+                .tip("Apps Revoke looks after: Revoke All Watched and the automatic options cover them. Right-click one to stop it or stop watching it, or choose in Settings.")
             if watched.isEmpty {
                 Text("No watched apps are in these lists.").foregroundStyle(.secondary)
             }
@@ -86,7 +90,7 @@ struct PanelView: View {
 
             if !others.isEmpty {
                 sectionTitle("Other apps with access").padding(.top, 6)
-                    .tip("Apps you don't watch that have Device Control or Screen Recording. Revoke lists them but never revokes them by itself.")
+                    .tip("Apps you don't watch that have Device Control or Screen Recording. Revoke lists them but never revokes them by itself. Right-click one to watch it or hide it.")
                 ForEach(others) { row($0) }
             }
 
@@ -169,6 +173,21 @@ struct PanelView: View {
                 cell(row, pane).frame(width: Self.columnWidth)
             }
         }
+        .contentShape(Rectangle())
+        .contextMenu {
+            // For an app, or a helper it left behind, running with no window to close.
+            if let id = row.client.bundleID, model.stoppableIDs.contains(id) || model.isRunning(row.client) {
+                Button("Stop App") { model.stop(row.client) }
+                    .disabled(model.isRevoking)
+                Divider()
+            }
+            if settings.isWatched(row.client) {
+                Button("Stop Watching") { settings.setWatched(row.client, false) }
+            } else {
+                Button("Watch") { settings.setWatched(row.client, true) }
+                Button("Hide from This List") { settings.setHidden(row.client, true) }
+            }
+        }
     }
 
     /// A deleted app gets one button rather than switches: nothing it left behind
@@ -214,7 +233,11 @@ struct PanelView: View {
 
     @ViewBuilder
     private func cell(_ row: Row, _ pane: Pane) -> some View {
-        if pane.tccService != nil && !model.snapshot.canReadTCC {
+        if pane == .links && model.snapshot.links[row.client] == nil {
+            Text("–")
+                .foregroundStyle(.tertiary)
+                .tip("Nothing opens \(row.name) with a link or a file.")
+        } else if pane.tccService != nil && !model.snapshot.canReadTCC {
             Image(systemName: "questionmark")
                 .foregroundStyle(.tertiary)
                 .tip("Revoke needs Full Disk Access to see this.")
@@ -229,6 +252,19 @@ struct PanelView: View {
     }
 
     private func help(_ row: Row, _ pane: Pane) -> String {
+        if pane == .links, let links = model.snapshot.links[row.client] {
+            let open = Self.ways(links.open)
+            let confirm = links.open.contains(where: \.isFile)
+                ? " macOS asks you to confirm each file type." : ""
+            if links.guarded.isEmpty {
+                return "Web pages, documents and other apps can open \(row.name) with \(open), which can carry instructions for it. Switch off to have Revoke ask you first, every time.\(confirm)"
+            }
+            let guarded = Self.ways(links.guarded)
+            if links.open.isEmpty {
+                return "Revoke asks you before \(guarded) open \(row.name), and shows what they carry. Switch on to let them open it directly."
+            }
+            return "Revoke asks you before \(guarded) open \(row.name), but \(open) still open it directly. Switch off to have Revoke ask about those too.\(confirm)"
+        }
         if pane == .localNetwork && filter.isOn {
             if row.isBlockedFromLocalNetwork {
                 return "Revoke is keeping \(row.name) off your local network. Switch on to stop blocking it."
@@ -244,6 +280,16 @@ struct PanelView: View {
             return "\(row.name) has \(pane.title). Only System Settings can change this, so switching it off opens it."
         }
         return "\(row.name) has \(pane.title). Switch off to revoke."
+    }
+
+    /// "claude:// links and .skill files".
+    private static func ways(_ links: [Link]) -> String {
+        let schemes = links.filter { !$0.isFile }.map(\.description)
+        let files = Array(Set(links.filter(\.isFile).map(\.description))).sorted()
+        var parts: [String] = []
+        if !schemes.isEmpty { parts.append("\(schemes.formatted(.list(type: .and))) links") }
+        if !files.isEmpty { parts.append("\(files.formatted(.list(type: .and))) files") }
+        return parts.joined(separator: " and ")
     }
 }
 

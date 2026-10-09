@@ -1,10 +1,13 @@
 import Foundation
 
-/// A privacy list from System Settings. Each one is a column in the panel.
+/// A column in the panel: a privacy list from System Settings, or Links, which is
+/// Revoke's own.
 enum Pane: CaseIterable, Identifiable {
     case deviceControl
     case screenRecording
     case localNetwork
+    /// Whether other apps can open the app with a link or a file, or Revoke asks first.
+    case links
 
     var id: Self { self }
 
@@ -17,6 +20,7 @@ enum Pane: CaseIterable, Identifiable {
         case .deviceControl: Self.isRenamed ? "Device Control and Data Access" : "Accessibility"
         case .screenRecording: "Screen & System Audio Recording"
         case .localNetwork: "Local Network"
+        case .links: "Links"
         }
     }
 
@@ -25,6 +29,7 @@ enum Pane: CaseIterable, Identifiable {
         case .deviceControl: Self.isRenamed ? "Device Control" : "Accessibility"
         case .screenRecording: "Screen & Audio"
         case .localNetwork: "Local Network"
+        case .links: "Links"
         }
     }
 
@@ -37,6 +42,8 @@ enum Pane: CaseIterable, Identifiable {
             "\(title): lets the app see your screen and hear what your Mac plays."
         case .localNetwork:
             "\(title): lets the app reach devices on your network, such as routers, printers and other computers."
+        case .links:
+            "\(title): lets web pages, emails, documents and other apps open the app with a link or a file, which can carry instructions for it. Off, Revoke asks you first."
         }
     }
 
@@ -45,15 +52,16 @@ enum Pane: CaseIterable, Identifiable {
         case .deviceControl: "cursorarrow.rays"
         case .screenRecording: "rectangle.dashed.badge.record"
         case .localNetwork: "network"
+        case .links: "link"
         }
     }
 
-    /// The service name in the TCC database. Local Network isn't part of TCC.
+    /// The service name in the TCC database. Local Network and Links aren't part of TCC.
     var tccService: String? {
         switch self {
         case .deviceControl: "kTCCServiceAccessibility"
         case .screenRecording: "kTCCServiceScreenCapture"
-        case .localNetwork: nil
+        case .localNetwork, .links: nil
         }
     }
 
@@ -63,18 +71,20 @@ enum Pane: CaseIterable, Identifiable {
         switch self {
         case .deviceControl: ["Accessibility"]
         case .screenRecording: ["ScreenCapture", "AudioCapture"]
-        case .localNetwork: []
+        case .localNetwork, .links: []
         }
     }
 
     /// Opens the pane in System Settings. macOS 27 has no link to Local Network, so
-    /// that one lands on Privacy & Security, a click away.
-    var settingsURL: URL {
+    /// that one lands on Privacy & Security, a click away. Links has no pane.
+    var settingsURL: URL? {
         let anchor = switch self {
         case .deviceControl: "Privacy_Accessibility"
         case .screenRecording: "Privacy_ScreenCapture"
         case .localNetwork: "Privacy_LocalNetwork"
+        case .links: nil as String?
         }
+        guard let anchor else { return nil }
         return URL(string: "x-apple.systempreferences:com.apple.preference.security?\(anchor)")!
     }
 
@@ -127,9 +137,26 @@ struct Entry: Equatable {
     var isAppleSystem = false
 }
 
+/// The links and file types that open one app.
+struct AppLinks: Equatable {
+    /// Other apps can open it with these directly.
+    var open: [Link] = []
+    /// Revoke stands in for these, and asks first.
+    var guarded: [Link] = []
+
+    var isEmpty: Bool { open.isEmpty && guarded.isEmpty }
+    var all: [Link] { (open + guarded).sorted() }
+
+    mutating func merge(_ other: AppLinks) {
+        open = Array(Set(open + other.open)).sorted()
+        guarded = Array(Set(guarded + other.guarded)).sorted()
+    }
+}
+
 /// Everything Revoke could read about the privacy lists at one moment.
 struct Snapshot: Equatable {
     var entries: [Client: [Pane: Entry]] = [:]
+    var links: [Client: AppLinks] = [:]
     /// False until Revoke has Full Disk Access.
     var canReadTCC = false
     var canReadLocalNetwork = false

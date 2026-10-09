@@ -24,7 +24,42 @@ enum AppInfo {
         "com.anthropic.claude-code": "Runs Claude's Code tab",
         // OpenAI renamed the Codex app ChatGPT, keeping Codex's bundle ID.
         "com.openai.codex": "Includes Codex",
+        // A background app of its own, which macOS also calls ChatGPT Computer Use.
+        "com.openai.sky.CUAService": "ChatGPT's computer use agent",
     ]
+
+    /// Apps that register links for a watched app, by the bundle ID of the app whose row
+    /// they belong in. Claude Code writes itself a URL Handler app in ~/Applications for
+    /// claude-cli:// links, and Revoke shows those under Claude Code.
+    private static let linkHandlers = [
+        "com.anthropic.claude-code-url-handler": "com.anthropic.claude-code",
+    ]
+
+    /// Watched apps known to register links, looked for even when they aren't in any
+    /// privacy list or running.
+    static let knownLinkApps = ["com.anthropic.claudefordesktop", "com.openai.codex", "com.openai.chat"]
+        + linkHandlers.keys
+
+    /// The row an app's links show in: its own, or the app it handles links for.
+    static func linkClient(_ bundleID: String) -> String {
+        guard let owner = linkHandlers[bundleID], isInstalled(.bundle(owner)) else { return bundleID }
+        return owner
+    }
+
+    /// The name to ask about opening, as the panel shows it: Claude Code for its URL Handler.
+    static func linkOwnerName(_ bundleID: String) -> String { name(.bundle(linkClient(bundleID))) }
+
+    private static var declared: [String: (Date?, [Link])] = [:]
+
+    /// The links an app's Info.plist registers, read again only when it changes.
+    static func declaredLinks(_ app: URL) -> [Link] {
+        let plist = app.appendingPathComponent("Contents/Info.plist")
+        let modified = (try? plist.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate
+        if let (date, links) = declared[app.path], date == modified { return links }
+        let links = Links.declared(byAppAt: app)
+        declared[app.path] = (modified, links)
+        return links
+    }
 
     static func name(_ client: Client) -> String { info(client).name }
     static func role(_ client: Client) -> String? { client.bundleID.flatMap { roles[$0] } }

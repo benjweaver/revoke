@@ -5,6 +5,30 @@ All notable changes are listed here. The format follows
 [Semantic Versioning](https://semver.org/). Each release's notes on GitHub come
 from its section below.
 
+## [1.2.0] - 2026-10-09
+
+### Added
+
+- A **Links** column. Web pages, emails, documents and other apps can open an agent
+  with a link (`claude://`, `codex://`, `claude-cli://`) or a file (`.skill`, `.mcpb`,
+  `.dxt`), carrying instructions for it, even while it's quit. Switched off, macOS
+  opens Revoke in the app's place, which shows the whole link and what's opening it,
+  and opens the app only if you say so. It needs no admin, keeps working while Revoke
+  isn't running, and takes links back within two seconds when an app registers them
+  again. macOS asks you to confirm each file type. Revoke All Watched and the automatic
+  revokes switch it off too (link schemes only, for the automatic ones).
+- **Give All Links Back** in Settings, and `Revoke --restore-links`, for before you
+  remove Revoke.
+- **Stop App** when you right-click an app in the panel: it stops the app, its
+  helpers, and everything they started, such as an agent's shells and tools.
+- **Stop All Apps**, beside Revoke All Watched and in a new menu you get by
+  right-clicking the menu bar icon: it stops every watched app that way, and leaves
+  the switches as they are.
+- Right-click an app under Other apps with access to watch it or hide it from that
+  list; hidden apps are listed in Settings, where you can show them again. Right-click
+  a watched app to stop watching it.
+- A line under Codex Computer Use ("ChatGPT's computer use agent").
+
 ## [1.1.5] - 2026-10-09
 
 ### Added
@@ -75,6 +99,7 @@ from its section below.
   deleted or replaced.
 - Apps from Anthropic and OpenAI are watched by default.
 
+[1.2.0]: https://github.com/benjweaver/revoke/releases/tag/v1.2.0
 [1.1.5]: https://github.com/benjweaver/revoke/releases/tag/v1.1.5
 [1.1.4]: https://github.com/benjweaver/revoke/releases/tag/v1.1.4
 [1.1.3]: https://github.com/benjweaver/revoke/releases/tag/v1.1.3

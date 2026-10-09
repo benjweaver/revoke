@@ -17,8 +17,8 @@ settings:
     DEVELOPMENT_TEAM: AR25V66TVY
     CODE_SIGN_STYLE: Automatic
     ENABLE_HARDENED_RUNTIME: YES
-    MARKETING_VERSION: "1.1.5"
-    CURRENT_PROJECT_VERSION: "10"
+    MARKETING_VERSION: "1.2.0"
+    CURRENT_PROJECT_VERSION: "11"
 targets:
   Revoke:
     type: application
@@ -45,6 +45,8 @@ targets:
         LSUIElement: true
         LSApplicationCategoryType: public.app-category.utilities
         NSHumanReadableCopyright: "GPL-3.0-or-later"
+    scheme:
+      testTargets: [RevokeTests]
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: dev.benjweaver.Revoke
@@ -82,3 +84,20 @@ targets:
         PRODUCT_NAME: dev.benjweaver.Revoke.Filter
         PRODUCT_MODULE_NAME: RevokeFilter
         GENERATE_INFOPLIST_FILE: NO
+  # Tests for the parts that talk to LaunchServices. They build Links.swift in rather
+  # than hosting in Revoke, and take a made-up scheme for the Revoke.app built beside
+  # them: xcodebuild test -scheme Revoke -allowProvisioningUpdates
+  RevokeTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources: [Tests, App/Links.swift]
+    dependencies:
+      - target: Revoke
+        embed: false
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.benjweaver.Revoke.Tests
+        GENERATE_INFOPLIST_FILE: YES
+        # Not hosted: a Revoke started for the tests would act on your real settings.
+        TEST_HOST: ""
+        BUNDLE_LOADER: ""

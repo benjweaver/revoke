@@ -40,11 +40,30 @@ final class Settings: ObservableObject {
     @Published private var removed: Set<String> {
         didSet { defaults.set(Array(removed), forKey: "unwatched") }
     }
+    /// Unwatched apps hidden from the panel's list of other apps, by client key.
+    @Published private(set) var hidden: Set<String> {
+        didSet { defaults.set(hidden.sorted(), forKey: "hidden") }
+    }
     /// The time limit never counts from before it was switched on.
     private(set) var limitStart: Date
     /// Apps, by bundle ID, that the network filter keeps off the local network.
     @Published private(set) var localNetworkBlocked: Set<String> {
         didSet { defaults.set(localNetworkBlocked.sorted(), forKey: "localNetworkBlocked"); onChange?() }
+    }
+    /// Apps, by bundle ID, whose links and files Revoke asks about before they open.
+    @Published private(set) var linksBlocked: Set<String> {
+        didSet { defaults.set(linksBlocked.sorted(), forKey: "linksBlocked") }
+    }
+    /// The app each link Revoke stands in for belongs to, to open on Yes and to give
+    /// the link back to.
+    private(set) var linkOwners: [Link: LinkOwner] {
+        didSet { defaults.set(try? JSONEncoder().encode(linkOwners.map(SavedOwner.init)), forKey: "linkOwners") }
+    }
+
+    private struct SavedOwner: Codable {
+        let link: Link
+        let owner: LinkOwner
+        init(_ pair: (key: Link, value: LinkOwner)) { (link, owner) = pair }
     }
 
     init() {
@@ -55,8 +74,12 @@ final class Settings: ObservableObject {
         revokeOnSleepOrLock = defaults.bool(forKey: "revokeOnSleepOrLock")
         added = Set(defaults.stringArray(forKey: "watched") ?? [])
         removed = Set(defaults.stringArray(forKey: "unwatched") ?? [])
+        hidden = Set(defaults.stringArray(forKey: "hidden") ?? [])
         limitStart = defaults.object(forKey: "limitStart") as? Date ?? .distantPast
         localNetworkBlocked = Set(defaults.stringArray(forKey: "localNetworkBlocked") ?? [])
+        linksBlocked = Set(defaults.stringArray(forKey: "linksBlocked") ?? [])
+        let saved = defaults.data(forKey: "linkOwners").flatMap { try? JSONDecoder().decode([SavedOwner].self, from: $0) }
+        linkOwners = Dictionary((saved ?? []).map { ($0.link, $0.owner) }, uniquingKeysWith: { $1 })
     }
 
     func isWatched(_ client: Client) -> Bool {
@@ -77,12 +100,28 @@ final class Settings: ObservableObject {
         onChange?()
     }
 
+    /// Hiding an app only takes it off the panel's list of other apps; its access stays.
+    func setHidden(_ client: Client, _ hide: Bool) {
+        if hide { hidden.insert(client.key) } else { hidden.remove(client.key) }
+        onChange?()
+    }
+
+    var hiddenClients: [Client] { hidden.map(Client.init(key:)) }
+
     func blockLocalNetwork(_ bundleIDs: some Sequence<String>) {
         localNetworkBlocked.formUnion(bundleIDs)
     }
 
     func allowLocalNetwork(_ bundleID: String) {
         localNetworkBlocked.remove(bundleID)
+    }
+
+    func setLinksBlocked(_ bundleID: String, _ blocked: Bool) {
+        if blocked { linksBlocked.insert(bundleID) } else { linksBlocked.remove(bundleID) }
+    }
+
+    func setLinkOwner(_ owner: LinkOwner?, for link: Link) {
+        linkOwners[link] = owner
     }
 
     /// Apps watched by choice rather than by developer, including ones that aren't
