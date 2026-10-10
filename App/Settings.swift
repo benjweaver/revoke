@@ -5,7 +5,7 @@ import Foundation
 @MainActor
 final class Settings: ObservableObject {
     /// Apps from these developers are watched unless unchecked.
-    static let watchedVendors: Set<String> = ["com.anthropic", "com.openai"]
+    static var watchedVendors: Set<String> { Client.watchedVendors }
     static let timeLimits = [15, 30, 60, 120, 240]
 
     private let defaults = UserDefaults.standard

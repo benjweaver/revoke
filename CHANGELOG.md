@@ -5,6 +5,16 @@ All notable changes are listed here. The format follows
 [Semantic Versioning](https://semver.org/). Each release's notes on GitHub come
 from its section below.
 
+## [1.3.1] - 2026-10-10
+
+### Changed
+
+- Cursor, Grok Bot (and the rest of Anysphere's apps), VS Code, VS Code Insiders,
+  VSCodium, Windsurf (now Devin Desktop), Zed, Kiro, Trae, Google Antigravity, Void, the
+  GitHub Copilot app, and Conductor are watched by default, like Claude and ChatGPT.
+  Agent extensions in an editor (Claude Code, Codex, Copilot) run with the editor's own
+  permissions, so watching the editor covers them.
+
 ## [1.3.0] - 2026-10-09
 
 ### Added
@@ -129,6 +139,7 @@ from its section below.
   deleted or replaced.
 - Apps from Anthropic and OpenAI are watched by default.
 
+[1.3.1]: https://github.com/benjweaver/revoke/releases/tag/v1.3.1
 [1.3.0]: https://github.com/benjweaver/revoke/releases/tag/v1.3.0
 [1.2.0]: https://github.com/benjweaver/revoke/releases/tag/v1.2.0
 [1.1.5]: https://github.com/benjweaver/revoke/releases/tag/v1.1.5

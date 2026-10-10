@@ -15,6 +15,17 @@ struct PaneTests {
         #expect(Pane.other.tccutilServices.contains("AppleEvents"))
     }
 
+    @Test func codingAgentsAreWatchedWhateverTheirBundleIDLooksLike() {
+        // Cursor ships under a ToDesktop ID; Grok Bot is made by Anysphere.
+        for id in ["com.todesktop.230313mzl4w4u92", "com.anysphere.sand", "com.microsoft.VSCode", "com.openai.codex",
+                   "dev.zed.Zed", "dev.kiro.desktop", "com.trae.app", "com.google.antigravity", "com.exafunction.windsurf"] {
+            #expect(Client.bundle(id).vendor.map(Client.watchedVendors.contains) == true, "\(id)")
+        }
+        #expect(Client.bundle("com.todesktop.other").vendor.map(Client.watchedVendors.contains) == false)
+        // Single apps are their own vendor, so quitting one doesn't revoke the rest.
+        #expect(Client.bundle("com.microsoft.VSCode").vendor != Client.bundle("com.microsoft.Word").vendor)
+    }
+
     @Test func anAllowedEntryWinsAndCountsFromTheEarliest() {
         let early = Date(timeIntervalSince1970: 1000)
         let late = Date(timeIntervalSince1970: 2000)

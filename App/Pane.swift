@@ -250,9 +250,30 @@ enum Client: Hashable {
         if case .bundle(let id) = self { id } else { nil }
     }
 
+    /// Entries with more than two parts are single apps whose bundle ID says nothing
+    /// about who makes them (Cursor ships as a ToDesktop app), or editors that run
+    /// agent extensions (Claude Code, Codex, Copilot) with the editor's own access.
+    static let watchedVendors: Set<String> = [
+        "com.anthropic", "com.openai", "com.anysphere",
+        // Editors and IDEs: agent extensions run with the editor's own access.
+        "com.todesktop.230313mzl4w4u92",  // Cursor
+        "com.microsoft.VSCode", "com.microsoft.VSCodeInsiders", "com.vscodium",
+        "com.exafunction.windsurf",  // Windsurf, now Devin Desktop
+        "dev.zed.Zed", "dev.kiro.desktop", "com.trae.app", "com.google.antigravity",
+        "com.voideditor.Void",
+        // Agent apps.
+        "com.github.githubapp",  // GitHub Copilot
+        "com.conductor.app",
+    ].reduce(into: []) { $0.insert($1.lowercased()) }
     /// The developer part of a bundle ID: "com.openai" for "com.openai.codex".
+    /// Apps in watchedVendors with longer IDs are their own vendor, so quitting
+    /// one doesn't revoke every other app from the same shared prefix.
     var vendor: String? {
-        bundleID.map { $0.lowercased().split(separator: ".").prefix(2).joined(separator: ".") }
+        bundleID.map { id in
+            let lowered = id.lowercased()
+            if Self.watchedVendors.contains(lowered) { return lowered }
+            return lowered.split(separator: ".").prefix(2).joined(separator: ".")
+        }
     }
 }
 
