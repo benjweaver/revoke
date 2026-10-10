@@ -13,9 +13,9 @@ struct SettingsView: View {
             Section {
                 if model.snapshot.canReadTCC {
                     Label("Revoke can read the permissions list.", systemImage: "checkmark.circle.fill")
-                        .tip("Full Disk Access is on, so Revoke can see which apps have Device Control or Screen Recording.")
+                        .tip("Full Disk Access is on, so Revoke can see which apps have each permission.")
                 } else {
-                    Text("Revoke needs Full Disk Access to show which apps have Device Control or Screen Recording. After switching it on, choose Quit & Reopen. Revoke only reads the permissions list: macOS doesn't let any app edit it.")
+                    Text("Revoke needs Full Disk Access to show which apps have Device Control, Screen Recording, and the other permissions. After switching it on, choose Quit & Reopen. Revoke only reads the permissions list: macOS doesn't let any app edit it.")
                         .fixedSize(horizontal: false, vertical: true)
                     Button("Open Full Disk Access Settings") { NSWorkspace.shared.open(Pane.fullDiskAccessURL) }
                         .tip("Opens Privacy & Security > Full Disk Access in System Settings. Switch Revoke on there.")
@@ -29,12 +29,12 @@ struct SettingsView: View {
             } header: {
                 Text("Local Network")
             } footer: {
-                Text("macOS lets only System Settings change its Local Network switch, so Revoke blocks the traffic itself, with a network filter like LuLu's. Revoked apps can't connect to devices on your network, commands they start included, but still reach the internet and servers on this Mac. Bonjour discovery isn't blocked, because macOS does it on the app's behalf.")
+                Text("macOS lets only System Settings change its Local Network switch, so Revoke blocks the traffic itself, with a network filter like LuLu's. Revoked apps can't connect to devices on your network, commands they start included, and those devices can't connect to them, but the apps still reach the internet and servers on this Mac. Bonjour discovery isn't blocked, because macOS does it on the app's behalf.")
                     .foregroundStyle(.secondary)
             }
 
             Section {
-                Text("Web pages, emails and documents can open an agent with a link (claude://, codex://, claude-cli://) or a file (.skill), carrying instructions for it, even while it's quit. Switch an app's Links off in the panel and macOS opens Revoke instead, which shows you the link and opens the app only if you say yes.")
+                Text("Web pages, emails, and documents can open an agent with a link (claude://, codex://, claude-cli://) or a file (.skill), carrying instructions for it, even while it's quit. Switch an app's Links off in the panel and macOS opens Revoke instead, which shows you the link and opens the app only if you say yes.")
                     .fixedSize(horizontal: false, vertical: true)
                 Button("Give All Links Back") { model.giveAllLinksBack() }
                     .disabled(settings.linksBlocked.isEmpty && settings.linkOwners.isEmpty)
@@ -61,7 +61,7 @@ struct SettingsView: View {
             } header: {
                 Text("Revoke automatically")
             } footer: {
-                Text("Quitting an app revokes every watched app from the same developer once none of them are open, so quitting ChatGPT also covers Codex Computer Use. The time limit counts from when access was switched on. Each of these switches Links off too.")
+                Text("Quitting an app revokes every watched app from the same developer once none of them are open, so quitting ChatGPT also covers Codex Computer Use. The time limit counts from when access was switched on. Each of these switches Links off too, and leaves running apps running.")
                     .foregroundStyle(.secondary)
             }
 
@@ -125,7 +125,15 @@ struct SettingsView: View {
 
             Section {
                 Button("Quit Revoke") { NSApp.terminate(nil) }
-                    .tip("Quits Revoke. Nothing is revoked automatically while it isn't running.")
+                    .tip("Quits Revoke. Nothing is stopped or revoked automatically while Revoke isn't running.")
+            }
+
+            Section {
+                ForEach(Self.cantDo, id: \.self) { line in
+                    Text(line).fixedSize(horizontal: false, vertical: true)
+                }
+            } header: {
+                Text("What macOS doesn't let Revoke do")
             }
         }
         .formStyle(.grouped)
@@ -138,6 +146,18 @@ struct SettingsView: View {
             model.refresh()
         }
     }
+
+    /// The same list as the README's, kept short.
+    private static let cantDo = [
+        "Only you can switch access on, in System Settings. Revoke can only take it away.",
+        "Location Services keeps its list where only macOS can read it, and tccutil can't reset it, so Revoke doesn't show or change it.",
+        "Open at Login and Allow in the Background are kept where only macOS can change them. Remove an app there in System Settings › General › Login Items & Extensions.",
+        "Automation, the camera and microphone, files and folders, and the rest under Other are kept where only Apple's own software can see them. Revoke can reset them, but can't show who has them.",
+        "macOS doesn't tell other apps whether an app's window was closed, minimized, or moved to another Space, so Revoke can't stop an app when its last window closes, as Revoke for Windows does. It acts when the app quits.",
+        "Stopping an app reaches what it started while they're still its children. A process it left behind, which macOS hands to launchd, can't be traced back to it.",
+        "Links only cover what goes through macOS's link and file handling. A process already running as you can start an app directly.",
+        "Command-line tools listed by path, rather than by bundle ID, can only be changed in System Settings.",
+    ]
 
     @ViewBuilder
     private var localNetwork: some View {

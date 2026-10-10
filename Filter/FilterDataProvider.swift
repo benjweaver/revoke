@@ -3,10 +3,11 @@ import Network
 import NetworkExtension
 import os
 
-/// Drops connections from blocked apps to the local network and lets everything
-/// else through.
+/// Drops connections between blocked apps and the local network, both ways, and lets
+/// everything else through: a blocked app can't reach devices on your network, and
+/// they can't connect to it.
 ///
-/// The filter's rules only hand it connections bound for local-network addresses;
+/// The filter's rules only hand it connections to or from local-network addresses;
 /// the rest never reach this code. If the extension stops or crashes, macOS lets
 /// traffic through rather than cutting the Mac off.
 final class FilterDataProvider: NEFilterDataProvider {
@@ -22,7 +23,9 @@ final class FilterDataProvider: NEFilterDataProvider {
                 localNetworkEndpoint: nil,
                 localPrefix: 0,
                 protocol: .any,
-                direction: .outbound), action: .filterData)
+                // Inbound too, so a device on the network can't connect to a server the
+                // app runs, as Revoke for Windows closes its inbound firewall rules.
+                direction: .any), action: .filterData)
         }
         apply(NEFilterSettings(rules: rules, defaultAction: .allow)) { error in
             completionHandler(error)

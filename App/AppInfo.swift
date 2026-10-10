@@ -1,4 +1,5 @@
 import AppKit
+import Security
 import UniformTypeIdentifiers
 
 /// Names and icons for clients, as Finder shows them, and whether they're still installed.
@@ -59,6 +60,32 @@ enum AppInfo {
         let links = Links.declared(byAppAt: app)
         declared[app.path] = (modified, links)
         return links
+    }
+
+    private static var askable: [String: (Date?, [OtherAccess])] = [:]
+
+    /// The access Revoke can't see that the app can ask for, from its Info.plist and
+    /// entitlements, read again only when the app changes.
+    static func otherAccess(_ client: Client) -> [OtherAccess] {
+        guard let id = client.bundleID, let app = NSWorkspace.shared.urlForApplication(withBundleIdentifier: id) else {
+            return OtherAccess.allCases
+        }
+        let plist = app.appendingPathComponent("Contents/Info.plist")
+        let modified = (try? plist.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate
+        if let (date, access) = askable[app.path], date == modified { return access }
+        let info = NSDictionary(contentsOf: plist) as? [String: Any] ?? [:]
+        let access = OtherAccess.askable(info: info, entitlements: entitlements(of: app))
+        askable[app.path] = (modified, access)
+        return access
+    }
+
+    private static func entitlements(of app: URL) -> [String: Any] {
+        var code: SecStaticCode?
+        var information: CFDictionary?
+        guard SecStaticCodeCreateWithPath(app as CFURL, [], &code) == errSecSuccess, let code,
+              SecCodeCopySigningInformation(code, SecCSFlags(rawValue: kSecCSSigningInformation), &information) == errSecSuccess
+        else { return [:] }
+        return (information as? [String: Any])?[kSecCodeInfoEntitlementsDict as String] as? [String: Any] ?? [:]
     }
 
     static func name(_ client: Client) -> String { info(client).name }

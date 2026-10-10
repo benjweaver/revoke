@@ -17,8 +17,8 @@ settings:
     DEVELOPMENT_TEAM: AR25V66TVY
     CODE_SIGN_STYLE: Automatic
     ENABLE_HARDENED_RUNTIME: YES
-    MARKETING_VERSION: "1.2.0"
-    CURRENT_PROJECT_VERSION: "11"
+    MARKETING_VERSION: "1.3.0"
+    CURRENT_PROJECT_VERSION: "12"
 targets:
   Revoke:
     type: application
@@ -84,13 +84,13 @@ targets:
         PRODUCT_NAME: dev.benjweaver.Revoke.Filter
         PRODUCT_MODULE_NAME: RevokeFilter
         GENERATE_INFOPLIST_FILE: NO
-  # Tests for the parts that talk to LaunchServices. They build Links.swift in rather
-  # than hosting in Revoke, and take a made-up scheme for the Revoke.app built beside
-  # them: xcodebuild test -scheme Revoke -allowProvisioningUpdates
+  # Tests for the parts that talk to LaunchServices, and the columns' bookkeeping. They
+  # build those files in rather than hosting in Revoke, and take a made-up scheme for
+  # the Revoke.app built beside them: xcodebuild test -scheme Revoke -allowProvisioningUpdates
   RevokeTests:
     type: bundle.unit-test
     platform: macOS
-    sources: [Tests, App/Links.swift]
+    sources: [Tests, App/Links.swift, App/Pane.swift, App/TCCDatabase.swift]
     dependencies:
       - target: Revoke
         embed: false

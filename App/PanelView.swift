@@ -9,8 +9,8 @@ struct PanelView: View {
 
     /// Width of each privacy list's column, shared by the titles and the rows so
     /// they line up even though the rows scroll.
-    private static let columnWidth: CGFloat = 76
-    private static let columnSpacing: CGFloat = 6
+    private static let columnWidth: CGFloat = 56
+    private static let columnSpacing: CGFloat = 4
     /// Past this many rows the list scrolls, so the panel stays on screen.
     private static let rowsBeforeScrolling = 10
 
@@ -37,7 +37,7 @@ struct PanelView: View {
                 Button("Revoke All Watched") { model.revokeWatched(reason: nil) }
                     .buttonStyle(PanelButtonStyle(prominent: true))
                     .disabled(model.isRevoking)
-                    .tip("Switches off every switch the watched apps have, Links included. Running apps keep going but have to ask again.")
+                    .tip("Switches off every access switch the watched apps have, Links included. Running apps keep going but have to ask again; Stop All Apps stops them.")
                 Button("Stop All Apps") { model.stopAll() }
                     .buttonStyle(PanelButtonStyle(prominent: false))
                     .disabled(model.isRevoking)
@@ -59,7 +59,7 @@ struct PanelView: View {
                 .fixedSize(horizontal: false, vertical: true)
         }
         .padding(16)
-        .frame(width: 540)
+        .frame(width: 800)
         .tipHost()
     }
 
@@ -70,10 +70,11 @@ struct PanelView: View {
             ForEach(Pane.allCases) { pane in
                 VStack(spacing: 3) {
                     Image(systemName: pane.symbol)
-                    Text(pane.shortTitle).font(.caption2).lineLimit(1)
+                    Text(pane.shortTitle).font(.caption2).lineLimit(2).multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
                 .foregroundStyle(.secondary)
-                .frame(width: Self.columnWidth)
+                .frame(width: Self.columnWidth, alignment: .top)
                 .tip(pane.explanation)
             }
         }
@@ -84,13 +85,13 @@ struct PanelView: View {
             sectionTitle("Watched")
                 .tip("Apps Revoke looks after: Revoke All Watched and the automatic options cover them. Right-click one to stop it or stop watching it, or choose in Settings.")
             if watched.isEmpty {
-                Text("No watched apps are in these lists.").foregroundStyle(.secondary)
+                Text("No watched apps are installed or running.").foregroundStyle(.secondary)
             }
             ForEach(watched) { row($0) }
 
             if !others.isEmpty {
                 sectionTitle("Other apps with access").padding(.top, 6)
-                    .tip("Apps you don't watch that have Device Control or Screen Recording. Revoke lists them but never revokes them by itself. Right-click one to watch it or hide it.")
+                    .tip("Apps you don't watch that have Device Control, Screen Recording, Input Monitoring, or Automation. Revoke lists them but never revokes them by itself. Right-click one to watch it or hide it.")
                 ForEach(others) { row($0) }
             }
 
@@ -137,9 +138,9 @@ struct PanelView: View {
             return "Revoke can't read the permissions list without Full Disk Access, so the lock shows a warning."
         }
         if !model.exposedNames.isEmpty || !model.runningNames.isEmpty {
-            return "The lock is open while a watched app is running or has Device Control or Screen Recording."
+            return "The lock is open while a watched app is running or has Device Control, Screen Recording, Input Monitoring, or Automation."
         }
-        return "The lock is closed: no watched app is running or has Device Control or Screen Recording."
+        return "The lock is closed: no watched app is running or has Device Control, Screen Recording, Input Monitoring, or Automation."
     }
 
     private var fullDiskAccessNotice: some View {
@@ -176,7 +177,7 @@ struct PanelView: View {
         .contentShape(Rectangle())
         .contextMenu {
             // For an app, or a helper it left behind, running with no window to close.
-            if let id = row.client.bundleID, model.stoppableIDs.contains(id) || model.isRunning(row.client) {
+            if row.isRunning || model.isRunning(row.client) {
                 Button("Stop App") { model.stop(row.client) }
                     .disabled(model.isRevoking)
                 Divider()
@@ -199,25 +200,16 @@ struct PanelView: View {
             Button("Remove") { model.removeLeftovers([row.client]) }
                 .buttonStyle(PanelButtonStyle(prominent: false))
                 .disabled(model.isRevoking)
-                .frame(width: Self.columnWidth)
+                .fixedSize()
                 .tip("Remove \(row.client.key) from the privacy lists.")
         }
     }
 
     private func label(_ row: Row, caption: String?) -> some View {
         HStack(spacing: 8) {
-            let isRunning = model.isRunning(row.client)
             Image(nsImage: row.icon)
                 .resizable()
                 .frame(width: 20, height: 20)
-                .overlay(alignment: .bottom) {
-                    // Like the Dock's dot: the app is running right now.
-                    if isRunning {
-                        Circle().fill(.primary.opacity(0.7)).frame(width: 4, height: 4).offset(y: 6)
-                    }
-                }
-                .tip(isRunning ? "\(row.name) is running. The dot goes when it quits."
-                      : "\(row.name) isn't running.")
             VStack(alignment: .leading, spacing: 0) {
                 Text(row.name).lineLimit(1).truncationMode(.middle)
                     .tip("\(row.name) (\(row.client.key))")
@@ -237,7 +229,13 @@ struct PanelView: View {
             Text("–")
                 .foregroundStyle(.tertiary)
                 .tip("Nothing opens \(row.name) with a link or a file.")
-        } else if pane.tccService != nil && !model.snapshot.canReadTCC {
+        } else if (pane == .running || pane == .other) && row.client.bundleID == nil {
+            Text("–")
+                .foregroundStyle(.tertiary)
+                .tip("Only System Settings can change command-line tools listed by path.")
+        } else if pane == .other {
+            otherMenu(row)
+        } else if !model.snapshot.canRead(pane) {
             Image(systemName: "questionmark")
                 .foregroundStyle(.tertiary)
                 .tip("Revoke needs Full Disk Access to see this.")
@@ -251,13 +249,40 @@ struct PanelView: View {
         }
     }
 
+    /// Access Revoke can't see gets a menu to reset it rather than a switch, which
+    /// would have nothing true to show.
+    private func otherMenu(_ row: Row) -> some View {
+        let access = AppInfo.otherAccess(row.client)
+        return Menu {
+            ForEach(access) { item in
+                Button("Reset \(item.title)") { model.reset([item], for: row.client) }
+                    .help(item.explanation)
+            }
+            Divider()
+            Button("Reset All of These") { model.reset(access, for: row.client) }
+        } label: {
+            Image(systemName: "arrow.counterclockwise")
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .disabled(model.isRevoking)
+        .accessibilityLabel("Reset other access for \(row.name)")
+        .tip("\(row.name) can ask for \(access.map(\.title).formatted(.list(type: .and))). macOS doesn't let other apps see who has these, so this is a menu rather than a switch: reset one and \(row.name) asks again the next time it needs it. Revoke All Watched resets them all.")
+    }
+
     private func help(_ row: Row, _ pane: Pane) -> String {
+        if pane == .running {
+            return row.isRunning
+                ? "\(row.name) is running. Switch off to stop it, its helpers, and everything they started, such as an agent's shells and tools."
+                : "\(row.name) isn't running. Switch on to open it."
+        }
         if pane == .links, let links = model.snapshot.links[row.client] {
             let open = Self.ways(links.open)
             let confirm = links.open.contains(where: \.isFile)
                 ? " macOS asks you to confirm each file type." : ""
             if links.guarded.isEmpty {
-                return "Web pages, documents and other apps can open \(row.name) with \(open), which can carry instructions for it. Switch off to have Revoke ask you first, every time.\(confirm)"
+                return "Web pages, documents, and other apps can open \(row.name) with \(open), which can carry instructions for it. Switch off to have Revoke ask you first, every time.\(confirm)"
             }
             let guarded = Self.ways(links.guarded)
             if links.open.isEmpty {

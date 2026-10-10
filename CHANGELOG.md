@@ -5,6 +5,36 @@ All notable changes are listed here. The format follows
 [Semantic Versioning](https://semver.org/). Each release's notes on GitHub come
 from its section below.
 
+## [1.3.0] - 2026-10-09
+
+### Added
+
+- A **Running** column. Switching it off stops the app, its helpers, and everything they
+  started, as Stop App does; switching it on opens the app. It replaces the dot under
+  running apps' icons.
+- **Input Monitoring** and **Full Disk Access** columns, revoked with `tccutil` like
+  Device Control.
+- An **Other** column: a menu that resets access macOS 27 doesn't let Revoke see, listing
+  what each app can ask for. That's Automation (controlling other apps with Apple
+  events, as AppleScript does: Terminal, Finder, System Events, UTM), the camera, the
+  microphone, Files & Folders, App Management, and Contacts, Calendars, Reminders &
+  Photos.
+- Revoke's network filter now also stops devices on your network connecting to an app
+  whose Local Network is switched off.
+- A "What macOS doesn't let Revoke do" section in Settings.
+
+### Changed
+
+- Revoke All Watched and the automatic options cover the new columns, and reset
+  everything under Other. They leave apps running; Stop All Apps stops them.
+- The menu bar lock, and the list of other apps with access, count Input Monitoring as
+  well as Device Control and Screen Recording.
+
+### Fixed
+
+- After you turn down a link from a command, the panel says "Kept a command (curl) in
+  Terminal from opening Claude", not "Kept A command".
+
 ## [1.2.0] - 2026-10-09
 
 ### Added
@@ -99,6 +129,7 @@ from its section below.
   deleted or replaced.
 - Apps from Anthropic and OpenAI are watched by default.
 
+[1.3.0]: https://github.com/benjweaver/revoke/releases/tag/v1.3.0
 [1.2.0]: https://github.com/benjweaver/revoke/releases/tag/v1.2.0
 [1.1.5]: https://github.com/benjweaver/revoke/releases/tag/v1.1.5
 [1.1.4]: https://github.com/benjweaver/revoke/releases/tag/v1.1.4

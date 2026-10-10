@@ -13,6 +13,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var window: NSWindow?
     /// Watches for clicks in other apps while the panel is open.
     private var outsideClicks: Any?
+    /// Keeps the Running column current while the panel is open: what an app started,
+    /// like an agent's shells, only shows up in a look at every process.
+    private var runningTimer: Timer?
     private var subscriptions = Set<AnyCancellable>()
 
     override init() {
@@ -94,8 +97,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return false
     }
 
-    /// An open lock while any watched app is running or has Device Control or Screen
-    /// Recording, so a glance at the menu bar says whether anything was left on.
+    /// An open lock while any watched app is running or can control the Mac or see
+    /// what's on it, so a glance at the menu bar says whether anything was left on.
     private func updateIcon() {
         guard let button = statusItem?.button else { return }
         let isOpen = !model.exposedNames.isEmpty || !model.runningNames.isEmpty
@@ -130,6 +133,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // active app, and macOS may turn down the activation, so close it here too.
         // Global monitors see only other apps' events: clicks in the panel and on
         // the menu bar icon still go to them.
+        let timer = Timer(timeInterval: 2, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.model.refreshRunning() }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        runningTimer = timer
         outsideClicks = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown, .otherMouseDown]) { [weak self] _ in
             MainActor.assumeIsolated { self?.popover.performClose(nil) }
         }
@@ -184,6 +192,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 extension AppDelegate: NSPopoverDelegate {
     func popoverDidClose(_ notification: Notification) {
         Tooltip.shared.hide()
+        runningTimer?.invalidate()
+        runningTimer = nil
         if let outsideClicks { NSEvent.removeMonitor(outsideClicks) }
         outsideClicks = nil
     }

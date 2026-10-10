@@ -16,10 +16,13 @@ struct Row: Identifiable {
     /// Revoke's network filter is keeping the app off the local network, whatever
     /// macOS's own Local Network switch says.
     let isBlockedFromLocalNetwork: Bool
+    /// The app, its helpers, or something they started is running.
+    let isRunning: Bool
 
     var id: Client { client }
 
     func isAllowed(_ pane: Pane) -> Bool {
+        if pane == .running { return isRunning }
         if pane == .localNetwork && isBlockedFromLocalNetwork { return false }
         return entries[pane]?.access == .allowed
     }
@@ -93,7 +96,7 @@ final class AccessModel: ObservableObject {
         var next = Snapshot()
         if let rows = TCCDatabase.read() {
             next.canReadTCC = true
-            for (client, pane, entry) in rows { next.entries[client, default: [:]][pane] = entry }
+            for (client, pane, entry) in rows { next.add(entry, for: client, pane) }
         }
         if let decisions = LocalNetworkStore.read() {
             next.canReadLocalNetwork = true
@@ -163,19 +166,24 @@ final class AccessModel: ObservableObject {
         if watched && !snapshot.canReadTCC {
             for client in settings.addedClients where all[client] == nil { all[client] = [:] }
         }
+        // A running watched app gets a row even when it's in no list, to stop it from.
+        if watched {
+            for id in runningAppIDs.union(stoppableIDs) where all[.bundle(id)] == nil && settings.isWatched(.bundle(id)) {
+                all[.bundle(id)] = [:]
+            }
+        }
         return makeRows(all.filter { client, entries in
             guard settings.isWatched(client) == watched, !isMissing(client), !isHidden(client) else { return false }
             if !watched && settings.hidden.contains(client.key) { return false }
-            return watched || entries[.deviceControl]?.access == .allowed
-                || entries[.screenRecording]?.access == .allowed
+            return watched || Pane.control.contains { entries[$0]?.access == .allowed }
         })
     }
 
-    /// Deleted apps whose Device Control or Screen Recording entries stayed behind.
-    /// macOS keeps them when an app is deleted, or replaced by one with a new bundle ID.
+    /// Deleted apps whose privacy entries stayed behind. macOS keeps them when an app
+    /// is deleted, or replaced by one with a new bundle ID.
     var leftoverRows: [Row] {
         makeRows(snapshot.entries.filter { client, entries in
-            isMissing(client) && (entries[.deviceControl] != nil || entries[.screenRecording] != nil)
+            isMissing(client) && entries.keys.contains { $0.tccService != nil }
         })
     }
 
@@ -199,15 +207,16 @@ final class AccessModel: ObservableObject {
         entries.map { client, entries in
             Row(client: client, name: AppInfo.name(client), icon: AppInfo.icon(client),
                 entries: entries, deadline: deadline(for: entries),
-                isBlockedFromLocalNetwork: isBlockedFromLocalNetwork(client))
+                isBlockedFromLocalNetwork: isBlockedFromLocalNetwork(client),
+                isRunning: client.bundleID.map { runningAppIDs.contains($0) || stoppableIDs.contains($0) } ?? false)
         }
         .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
     }
 
-    /// Installed watched apps that have Device Control or Screen Recording right now.
+    /// Installed watched apps that can control the Mac or see what's on it right now.
     var exposedNames: [String] {
         rows(watched: true)
-            .filter { $0.isAllowed(.deviceControl) || $0.isAllowed(.screenRecording) }
+            .filter { row in Pane.control.contains(where: row.isAllowed) }
             .map(\.name)
     }
 
@@ -258,7 +267,9 @@ final class AccessModel: ObservableObject {
     /// can change command-line tools, so those open it. Local Network is Revoke's
     /// own block once the network filter is on, and System Settings' switch before.
     func set(_ pane: Pane, on: Bool, for client: Client) {
-        if pane == .links {
+        if pane == .running {
+            if on { open(client) } else { stop(client) }
+        } else if pane == .links {
             if on { giveLinksBack([client]) } else { revoke([client], panes: [.links], reason: nil) }
         } else if pane == .localNetwork, filter.isOn, let id = client.bundleID {
             let name = AppInfo.name(client)
@@ -289,12 +300,12 @@ final class AccessModel: ObservableObject {
         var clients = Set(snapshot.entries.keys.filter(settings.isWatched))
         clients.formUnion(settings.addedClients)
         if let vendor { clients = clients.filter { $0.vendor == vendor } }
-        revoke(Array(clients), panes: Pane.allCases, reason: reason)
+        revoke(Array(clients), panes: Pane.access, reason: reason)
     }
 
     /// Clears the entries deleted apps left behind, all of them or the ones given.
     func removeLeftovers(_ clients: [Client]? = nil) {
-        revoke(clients ?? leftoverRows.map(\.client), panes: [.deviceControl, .screenRecording], reason: nil)
+        revoke(clients ?? leftoverRows.map(\.client), panes: Pane.allCases.filter { $0.tccService != nil } + [.other], reason: nil)
     }
 
     private func sendBlocklist() {
@@ -376,6 +387,12 @@ final class AccessModel: ObservableObject {
             changes.append(panes == [.links] ? "switched Links off for \(revoked.formatted(.list(type: .and)))"
                 : "revoked \(what) for \(revoked.formatted(.list(type: .and)))")
         }
+        // What Revoke can't see, it can only say it reset.
+        if panes.contains(.other) {
+            let reset = ids.map(Client.bundle).filter { !isMissing($0) }.map(AppInfo.name)
+                .filter { failures[$0] == nil }.sorted()
+            if !reset.isEmpty { changes.append("reset other access for \(reset.formatted(.list(type: .and)))") }
+        }
         if cleared > 0 { changes.append("cleared what \(cleared) deleted \(cleared == 1 ? "app" : "apps") left behind") }
 
         var text: String
@@ -394,6 +411,26 @@ final class AccessModel: ObservableObject {
         if let reason { text += " when \(reason)" }
         log.notice("\(text, privacy: .public)")
         lastActivity = Activity(text: text, isError: !failures.isEmpty)
+    }
+
+    /// Resets access Revoke can't see, like Automation or the microphone, so the app
+    /// asks again the next time it needs it.
+    func reset(_ access: [OtherAccess], for client: Client) {
+        guard let id = client.bundleID, !access.isEmpty else { return }
+        let services = access.flatMap(\.tccutilServices)
+        let name = AppInfo.name(client)
+        let what = access.count == 1 ? access[0].title : "other access"
+        log.notice("Resetting \(services, privacy: .public) for \(id, privacy: .public)")
+        enqueue {
+            let text: String
+            if let error = await Revoker.reset(services, for: id, installed: !self.isMissing(client)) {
+                text = "Couldn't reset \(what) for \(name): \(error)"
+            } else {
+                text = "Reset \(what) for \(name): it asks again next time"
+            }
+            log.notice("\(text, privacy: .public)")
+            self.lastActivity = Activity(text: text, isError: text.hasPrefix("Couldn't"))
+        }
     }
 
     /// Something worth a line in the panel that happened outside the model.
@@ -507,6 +544,21 @@ final class AccessModel: ObservableObject {
 
     // MARK: - Stopping apps
 
+    /// Opens the app, as switching Running on does.
+    private func open(_ client: Client) {
+        guard let id = client.bundleID, let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: id) else {
+            lastActivity = Activity(text: "Revoke can't find \(AppInfo.name(client)) to open it", isError: true)
+            return
+        }
+        NSWorkspace.shared.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration()) { [weak self] _, error in
+            DispatchQueue.main.async {
+                let text = error.map { "Couldn't open \(AppInfo.name(client)): \($0.localizedDescription)" } ?? "Opened \(AppInfo.name(client))"
+                self?.lastActivity = Activity(text: text, isError: error != nil)
+                self?.refreshRunning()
+            }
+        }
+    }
+
     /// Stops the app, its helpers, and everything they started.
     func stop(_ client: Client) {
         guard let id = client.bundleID else { return }
@@ -558,7 +610,7 @@ final class AccessModel: ObservableObject {
     }
 
     private func deadline(for entries: [Pane: Entry]) -> Date? {
-        [Pane.deviceControl, .screenRecording].compactMap { deadline(for: entries[$0]) }.min()
+        Pane.allCases.filter { $0.tccService != nil }.compactMap { deadline(for: entries[$0]) }.min()
     }
 
     private func deadline(for entry: Entry?) -> Date? {
@@ -578,11 +630,11 @@ final class AccessModel: ObservableObject {
         var next: Date?
         for (client, entries) in snapshot.entries where client.bundleID != nil && settings.isWatched(client) {
             var due: [Pane] = []
-            for pane in [Pane.deviceControl, .screenRecording] {
+            for pane in Pane.allCases where pane.tccService != nil {
                 guard let deadline = deadline(for: entries[pane]) else { continue }
                 if deadline <= now { due.append(pane) } else { next = min(next ?? deadline, deadline) }
             }
-            if !due.isEmpty { revoke([client], panes: due + [.links], reason: "its time limit ran out") }
+            if !due.isEmpty { revoke([client], panes: due + [.links, .other], reason: "its time limit ran out") }
         }
 
         if let next {

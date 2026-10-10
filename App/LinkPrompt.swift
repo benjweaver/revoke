@@ -72,8 +72,10 @@ final class LinkPrompt {
 
         let what = link.isFile ? "a file" : "a link"
         guard answer == .alertSecondButtonReturn else {
-            log.notice("Kept \(who, privacy: .public) from opening \(name, privacy: .public) with \(target, privacy: .public)")
-            onActivity?("Kept \(who) from opening \(name) with \(what)")
+            // Mid-sentence, "A command (curl)" and "Something" start lowercase.
+            let kept = opener == nil || who.hasPrefix("A command") ? who.prefix(1).lowercased() + who.dropFirst() : who
+            log.notice("Kept \(kept, privacy: .public) from opening \(name, privacy: .public) with \(target, privacy: .public)")
+            onActivity?("Kept \(kept) from opening \(name) with \(what)")
             return
         }
         log.notice("Opening \(name, privacy: .public) with \(target, privacy: .public), as asked")

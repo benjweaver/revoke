@@ -2,17 +2,19 @@ import Foundation
 import Security
 import SQLite3
 
-/// Reads the system privacy database (TCC), where macOS keeps Device Control and
-/// Screen Recording. Opening it needs Full Disk Access. Nothing outside Apple can
-/// write to it, not even root, because System Integrity Protection guards it.
+/// Reads the system privacy database (TCC), where macOS keeps Device Control, Screen
+/// Recording, Input Monitoring and Full Disk Access. Opening it needs Full Disk Access.
+/// Nothing outside Apple can write to it, not even root, because System Integrity
+/// Protection guards it.
 ///
-/// System Audio Recording Only lives in a per-user database that macOS 27 keeps in
-/// a protected container no app can read, so Revoke can't show it.
+/// The rest, like Automation, the camera and microphone, and System Audio Recording
+/// Only, lives in each user's database, which macOS 27 keeps where no app can read it.
+/// tccd hands that list only to Apple's own software, so Revoke can reset those but
+/// can't show them.
 enum TCCDatabase {
     private static let path = "/Library/Application Support/com.apple.TCC/TCC.db"
 
-    /// Every Device Control and Screen Recording entry, or nil when the database
-    /// can't be read.
+    /// Every entry for the panel's columns, or nil when the database can't be read.
     static func read() -> [(Client, Pane, Entry)]? {
         var db: OpaquePointer?
         defer { sqlite3_close(db) }
