@@ -27,6 +27,16 @@ enum AppInfo {
         "com.openai.codex": "Includes Codex",
         // A background app of its own, which macOS also calls ChatGPT Computer Use.
         "com.openai.sky.CUAService": "ChatGPT's computer use agent",
+        // The bundle ID is a ToDesktop id, and the agent runs as the editor.
+        "com.todesktop.230313mzl4w4u92": "Includes Cursor's agent",
+        "com.google.antigravity": "Google's coding agent",
+        "com.google.antigravity-ide": "Google's coding agent",
+        "com.deepseek.dsh": "DeepSeek's coding agent",
+        "com.deepseek.harness": "DeepSeek's coding agent",
+        "com.tencent.codebuddy": "Tencent's coding agent",
+        "com.tencent.codebuddycn": "Tencent's coding agent",
+        "ai.factory.desktop": "Factory's coding agent",
+        "com.electron.factory": "Factory's coding agent",
     ]
 
     /// Apps that register links for a watched app, by the bundle ID of the app whose row
@@ -37,9 +47,14 @@ enum AppInfo {
     ]
 
     /// Watched apps known to register links, looked for even when they aren't in any
-    /// privacy list or running.
-    static let knownLinkApps = ["com.anthropic.claudefordesktop", "com.openai.codex", "com.openai.chat"]
-        + linkHandlers.keys
+    /// privacy list or running. DeepSeek's is dsh://; Cursor's is cursor://;
+    /// Antigravity's is antigravity://. The editors are here too, for vscode:// and
+    /// the rest, even though their source-file claims are not links.
+    static let knownLinkApps = [
+        "com.anthropic.claudefordesktop", "com.openai.codex", "com.openai.chat",
+        "com.anysphere.sand",  // Grok Bot: grokbot:// and sand://
+        "com.deepseek.dsh", "com.deepseek.harness",
+    ] + Client.watchedApps + linkHandlers.keys
 
     /// The row an app's links show in: its own, or the app it handles links for.
     static func linkClient(_ bundleID: String) -> String {

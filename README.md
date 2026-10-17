@@ -22,7 +22,7 @@ the Mac or see what's on it (Device Control, Screen Recording, or Input Monitori
 | Input | Input Monitoring: the app can see every key you press and every click | The same |
 | Full Disk | Full Disk Access: the app can read and change all your files, other apps' data included | The same |
 | Local Network | The app can reach devices on your network, or they can connect to it | Blocks both with Revoke's network filter (below) |
-| Links | Web pages, emails, documents, and other apps can open it with a link (`claude://`, `codex://`, `claude-cli://`) or a file (`.skill`, `.mcpb`) | Revoke opens instead, shows you the whole link and who sent it, and opens the app only if you say so (below) |
+| Links | Web pages, emails, documents, and other apps can open it with a link (`claude://`, `codex://`, `claude-cli://`, `cursor://`, `antigravity://`, `dsh://`) or a file (`.skill`, `.mcpb`) | Revoke opens instead, shows you the whole link and who sent it, and opens the app only if you say so (below) |
 | Other | A menu rather than a switch: what the app can ask for that macOS doesn't let Revoke see (below) | Choose one to reset it with `tccutil`, or all of them |
 
 **Other** covers Automation (controlling other apps with Apple events, as AppleScript
@@ -66,10 +66,15 @@ It can also revoke automatically, if you turn these on in Settings:
 These switch Links off too, for link schemes. File types are left as they are, because
 macOS asks you to confirm each one and nobody may be there to answer. Apps keep running.
 
-Apps from Anthropic and OpenAI are watched by default. Any other app can be added in
-Settings. On macOS, OpenAI's are ChatGPT, which is the Codex app renamed (it keeps
-Codex's bundle ID and `codex://` links, and bundles the Codex CLI), and Codex Computer
-Use, a background app of its own that macOS also calls ChatGPT Computer Use.
+Claude, ChatGPT, Cursor, Google Antigravity (and Antigravity IDE), DeepSeek Harness,
+and the other coding agents and editors Revoke knows are watched by default: Grok Bot,
+VS Code, VS Code Insiders, VSCodium, Windsurf (now Devin Desktop), Zed and Zed Preview,
+Kiro, Trae and Trae CN, Void, CodeBuddy, Factory, the GitHub Copilot app, and Conductor.
+Any other app can be added in Settings. On macOS, OpenAI's are ChatGPT, which is the
+Codex app renamed (it keeps Codex's bundle ID and `codex://` links, and bundles the
+Codex CLI), and Codex Computer Use, a background app of its own that macOS also calls
+ChatGPT Computer Use. DeepSeek Harness opens from `dsh://` links; older builds used
+the bundle ID `com.deepseek.harness`.
 
 ## Install
 
@@ -169,19 +174,23 @@ signed with the same Developer ID, can change what it blocks.
 ## Links
 
 A quit agent isn't out of reach. Any web page can ask the browser to open a
-`claude://` or `codex://` link, an email or a chat message can carry one, and macOS
-starts the app with whatever the link holds; a downloaded `.skill` or `.mcpb` file
-opens in Claude or Codex the same way. That can hand an agent instructions while you're
-away, or dressed up as something else: prompt injection that doesn't wait for the app
-to be open.
+`claude://`, `codex://`, `cursor://`, `antigravity://`, or `dsh://` link, an email or a
+chat message can carry one, and macOS starts the app with whatever the link holds; a
+downloaded `.skill` or `.mcpb` file opens in Claude or Codex the same way. That can
+hand an agent instructions while you're away, or dressed up as something else: prompt
+injection that doesn't wait for the app to be open.
 
 Revoke reads each watched app's `Info.plist` for the link schemes and file types it
 registers, and the Links switch covers the ones macOS opens with that app now. On this
 Mac that's `claude://` for Claude, `codex://` for ChatGPT (which also lists `http` and
-`https`, but those belong to your browser and Revoke never touches them), `.skill`,
-`.dxt`, and `.mcpb` files, and Claude's sign-in scheme. Claude Code registers
+`https`, but those belong to your browser and Revoke never touches them), `cursor://`
+for Cursor, `antigravity://` for Antigravity, `grokbot://` and `sand://` for Grok Bot,
+`.skill`, `.dxt`, and `.mcpb` files, and Claude's sign-in scheme. Claude Code registers
 `claude-cli://` by writing itself a small URL Handler app in `~/Applications`, which
-Revoke shows under Claude Code.
+Revoke shows under Claude Code. DeepSeek Harness registers `dsh://`. An editor's claim
+on source files (`.py`, `.js`, `.md`, and the rest, registered as Editor) is left
+alone: that's how the editor opens code, and taking it would put Revoke in front of
+every one of them.
 
 Switching **Links** off makes Revoke the app macOS opens those with, through
 LaunchServices' own per-user setting, so it needs no admin rights and keeps working

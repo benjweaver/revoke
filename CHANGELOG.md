@@ -5,6 +5,22 @@ All notable changes are listed here. The format follows
 [Semantic Versioning](https://semver.org/). Each release's notes on GitHub come
 from its section below.
 
+## [1.4.0] - 2026-10-17
+
+### Added
+
+- DeepSeek Harness (`com.deepseek.dsh`, and older builds as `com.deepseek.harness`),
+  Antigravity IDE, Trae CN, Zed Preview, CodeBuddy, and Factory are watched by
+  default, with their link schemes (`dsh://` for DeepSeek). Helpers of a watched app
+  are watched with it, so quitting Cursor also covers Cursor Helper.
+
+### Fixed
+
+- Switching Links off for an editor no longer offers to take the source files it
+  opens (`.py`, `.js`, `.md`, and the rest). Those are how the editor opens code.
+  Link schemes such as `cursor://` and `antigravity://` are still covered, as are
+  agent files such as `.skill` and `.mcpb`.
+
 ## [1.3.1] - 2026-10-10
 
 ### Changed
@@ -139,6 +155,7 @@ from its section below.
   deleted or replaced.
 - Apps from Anthropic and OpenAI are watched by default.
 
+[1.4.0]: https://github.com/benjweaver/revoke/releases/tag/v1.4.0
 [1.3.1]: https://github.com/benjweaver/revoke/releases/tag/v1.3.1
 [1.3.0]: https://github.com/benjweaver/revoke/releases/tag/v1.3.0
 [1.2.0]: https://github.com/benjweaver/revoke/releases/tag/v1.2.0

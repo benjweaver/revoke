@@ -47,9 +47,11 @@ struct LinksTests {
         let app = try Self.makeApp(in: folder, name: "Agent", id: "dev.benjweaver.revoke-test.agent",
                                    schemes: ["Agent", "http", "https"],
                                    documents: [["LSItemContentTypes": ["com.example.skill", "public.data"]],
-                                               ["CFBundleTypeExtensions": ["pdf", "*"]]])
+                                               ["CFBundleTypeExtensions": ["pdf", "*"]],
+                                               ["CFBundleTypeRole": "Editor", "CFBundleTypeExtensions": ["py", "js", "md"]]])
         let links = Links.declared(byAppAt: app)
-        // The web's schemes are the browser's, and all files are everyone's.
+        // The web's schemes are the browser's, all files are everyone's, and an
+        // editor's source-file claims aren't links that carry a prompt.
         #expect(links == [.scheme("agent"), .type("com.adobe.pdf"), .type("com.example.skill")].sorted())
     }
 
@@ -116,7 +118,11 @@ struct LinksTests {
             "CFBundleURLTypes": [["CFBundleURLName": name, "CFBundleURLSchemes": schemes]],
         ]
         if !documents.isEmpty {
-            info["CFBundleDocumentTypes"] = documents.map { $0.merging(["CFBundleTypeRole": "Viewer"]) { $1 } }
+            info["CFBundleDocumentTypes"] = documents.map { document in
+                var document = document
+                if document["CFBundleTypeRole"] == nil { document["CFBundleTypeRole"] = "Viewer" }
+                return document
+            }
         }
         try PropertyListSerialization.data(fromPropertyList: info, format: .xml, options: 0)
             .write(to: app.appendingPathComponent("Contents/Info.plist"))

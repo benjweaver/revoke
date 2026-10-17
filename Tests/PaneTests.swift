@@ -17,13 +17,26 @@ struct PaneTests {
 
     @Test func codingAgentsAreWatchedWhateverTheirBundleIDLooksLike() {
         // Cursor ships under a ToDesktop ID; Grok Bot is made by Anysphere.
+        // DeepSeek's current app is com.deepseek.dsh; older builds were com.deepseek.harness.
         for id in ["com.todesktop.230313mzl4w4u92", "com.anysphere.sand", "com.microsoft.VSCode", "com.openai.codex",
-                   "dev.zed.Zed", "dev.kiro.desktop", "com.trae.app", "com.google.antigravity", "com.exafunction.windsurf"] {
+                   "dev.zed.Zed", "dev.zed.Zed-Preview", "dev.kiro.desktop", "com.trae.app", "cn.trae.app",
+                   "com.google.antigravity", "com.google.antigravity-ide", "com.exafunction.windsurf",
+                   "com.deepseek.dsh", "com.deepseek.harness", "com.tencent.codebuddy", "com.tencent.codebuddycn",
+                   "ai.factory.desktop", "com.electron.factory"] {
             #expect(Client.bundle(id).vendor.map(Client.watchedVendors.contains) == true, "\(id)")
         }
+        // Helpers belong to the app. Other apps from the same shared prefix do not.
+        #expect(Client.bundle("com.todesktop.230313mzl4w4u92.helper").vendor == "com.todesktop.230313mzl4w4u92")
+        #expect(Client.bundle("com.google.antigravity.helper.GPU").vendor == "com.google.antigravity")
+        #expect(Client.bundle("com.microsoft.VSCode.helper").vendor == "com.microsoft.vscode")
+        #expect(Client.bundle("com.deepseek.dsh").vendor == Client.bundle("com.deepseek.harness").vendor)
         #expect(Client.bundle("com.todesktop.other").vendor.map(Client.watchedVendors.contains) == false)
+        #expect(Client.bundle("com.google.Chrome").vendor.map(Client.watchedVendors.contains) == false)
+        #expect(Client.bundle("com.tencent.xin").vendor.map(Client.watchedVendors.contains) == false)
         // Single apps are their own vendor, so quitting one doesn't revoke the rest.
         #expect(Client.bundle("com.microsoft.VSCode").vendor != Client.bundle("com.microsoft.Word").vendor)
+        #expect(Client.bundle("com.google.antigravity").vendor != Client.bundle("com.google.antigravity-ide").vendor)
+        #expect(Client.bundle("dev.zed.Zed").vendor != Client.bundle("dev.zed.Zed-Preview").vendor)
     }
 
     @Test func anAllowedEntryWinsAndCountsFromTheEarliest() {

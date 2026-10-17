@@ -34,7 +34,7 @@ struct SettingsView: View {
             }
 
             Section {
-                Text("Web pages, emails, and documents can open an agent with a link (claude://, codex://, claude-cli://) or a file (.skill), carrying instructions for it, even while it's quit. Switch an app's Links off in the panel and macOS opens Revoke instead, which shows you the link and opens the app only if you say yes.")
+                Text("Web pages, emails, and documents can open an agent with a link (claude://, codex://, claude-cli://, cursor://, antigravity://, dsh://) or a file (.skill), carrying instructions for it, even while it's quit. Switch an app's Links off in the panel and macOS opens Revoke instead, which shows you the link and opens the app only if you say yes.")
                     .fixedSize(horizontal: false, vertical: true)
                 Button("Give All Links Back") { model.giveAllLinksBack() }
                     .disabled(settings.linksBlocked.isEmpty && settings.linkOwners.isEmpty)
@@ -86,7 +86,7 @@ struct SettingsView: View {
             } header: {
                 Text("Watched apps")
             } footer: {
-                Text("Revoke All Watched and the automatic options cover these. Apps from Anthropic and OpenAI are watched unless you switch them off.")
+                Text("Revoke All Watched and the automatic options cover these. Claude, ChatGPT, Cursor, Antigravity, DeepSeek, and the other coding agents and editors Revoke knows are watched unless you switch them off.")
                     .foregroundStyle(.secondary)
             }
 

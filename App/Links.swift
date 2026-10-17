@@ -60,6 +60,11 @@ enum Links {
             }
         }
         for type in info["CFBundleDocumentTypes"] as? [[String: Any]] ?? [] {
+            // Editors claim every source file as Editor so double-clicking code
+            // opens them. That isn't a link carrying a prompt, and taking it would
+            // put Revoke in front of .py and .js. Agent files (.skill, .mcpb) are
+            // registered as Viewer.
+            if (type["CFBundleTypeRole"] as? String)?.caseInsensitiveCompare("Editor") == .orderedSame { continue }
             var ids = type["LSItemContentTypes"] as? [String] ?? []
             for ext in type["CFBundleTypeExtensions"] as? [String] ?? [] where ext != "*" {
                 if let id = UTType(filenameExtension: ext)?.identifier { ids.append(id) }

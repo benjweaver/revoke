@@ -250,28 +250,41 @@ enum Client: Hashable {
         if case .bundle(let id) = self { id } else { nil }
     }
 
-    /// Entries with more than two parts are single apps whose bundle ID says nothing
-    /// about who makes them (Cursor ships as a ToDesktop app), or editors that run
-    /// agent extensions (Claude Code, Codex, Copilot) with the editor's own access.
-    static let watchedVendors: Set<String> = [
-        "com.anthropic", "com.openai", "com.anysphere",
-        // Editors and IDEs: agent extensions run with the editor's own access.
+    /// Developers whose every app is an agent. A helper such as
+    /// "com.deepseek.dsh.helper" belongs with them.
+    private static let watchedPrefixes = [
+        "com.anthropic", "com.openai", "com.anysphere", "com.deepseek",
+    ]
+    /// One app each. The bundle ID is the whole vendor, so quitting Cursor doesn't
+    /// revoke every other ToDesktop app, and a helper ("….helper") still counts as
+    /// that app. Agent extensions run with the editor's own access, so the editor
+    /// is the app to watch.
+    static let watchedApps = [
         "com.todesktop.230313mzl4w4u92",  // Cursor
         "com.microsoft.VSCode", "com.microsoft.VSCodeInsiders", "com.vscodium",
         "com.exafunction.windsurf",  // Windsurf, now Devin Desktop
-        "dev.zed.Zed", "dev.kiro.desktop", "com.trae.app", "com.google.antigravity",
+        "dev.zed.Zed", "dev.zed.Zed-Preview", "dev.kiro.desktop",
+        "com.trae.app", "cn.trae.app",
+        "com.google.antigravity", "com.google.antigravity-ide",
         "com.voideditor.Void",
+        "com.tencent.codebuddy", "com.tencent.codebuddycn",
+        "ai.factory.desktop", "com.electron.factory",
         // Agent apps.
         "com.github.githubapp",  // GitHub Copilot
         "com.conductor.app",
-    ].reduce(into: []) { $0.insert($1.lowercased()) }
+    ]
+    /// Company prefixes and single apps, lowercased, for membership tests.
+    static let watchedVendors: Set<String> = (watchedPrefixes + watchedApps)
+        .reduce(into: []) { $0.insert($1.lowercased()) }
     /// The developer part of a bundle ID: "com.openai" for "com.openai.codex".
-    /// Apps in watchedVendors with longer IDs are their own vendor, so quitting
-    /// one doesn't revoke every other app from the same shared prefix.
+    /// The longest watched entry that is this ID, or a prefix of it, wins, so a
+    /// helper belongs to its app and two apps that share a company don't share a
+    /// vendor unless that company is itself watched.
     var vendor: String? {
         bundleID.map { id in
             let lowered = id.lowercased()
-            if Self.watchedVendors.contains(lowered) { return lowered }
+            let matches = Self.watchedVendors.filter { lowered == $0 || lowered.hasPrefix($0 + ".") }
+            if let best = matches.max(by: { $0.count < $1.count }) { return best }
             return lowered.split(separator: ".").prefix(2).joined(separator: ".")
         }
     }
