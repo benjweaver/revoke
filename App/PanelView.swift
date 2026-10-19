@@ -5,12 +5,10 @@ struct PanelView: View {
     @ObservedObject var model: AccessModel
     @ObservedObject var settings: Settings
     @ObservedObject var filter: NetworkFilter
+    /// Set from the screen the panel opens on: see PanelLayout.width(forScreenWidth:).
+    var width: CGFloat = PanelLayout.preferredWidth
     let openSettings: () -> Void
 
-    /// Width of each privacy list's column, shared by the titles and the rows so
-    /// they line up even though the rows scroll.
-    private static let columnWidth: CGFloat = 56
-    private static let columnSpacing: CGFloat = 4
     /// Past this many rows the list scrolls, so the panel stays on screen.
     private static let rowsBeforeScrolling = 10
 
@@ -58,14 +56,14 @@ struct PanelView: View {
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
-        .padding(16)
-        .frame(width: 800)
+        .padding(PanelLayout.padding)
+        .frame(width: width)
         .tipHost()
     }
 
     /// The titles sit outside the list so they stay put while it scrolls.
     private var columnTitles: some View {
-        HStack(spacing: Self.columnSpacing) {
+        HStack(spacing: PanelLayout.columnSpacing) {
             Spacer()
             ForEach(Pane.allCases) { pane in
                 VStack(spacing: 3) {
@@ -74,7 +72,7 @@ struct PanelView: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 .foregroundStyle(.secondary)
-                .frame(width: Self.columnWidth, alignment: .top)
+                .frame(width: PanelLayout.columnWidth, alignment: .top)
                 .tip(pane.explanation)
             }
         }
@@ -165,13 +163,13 @@ struct PanelView: View {
     }
 
     private func row(_ row: Row) -> some View {
-        HStack(spacing: Self.columnSpacing) {
+        HStack(spacing: PanelLayout.columnSpacing) {
             label(row, caption: [
                 AppInfo.role(row.client),
                 row.deadline.map { "Revokes at \($0.formatted(date: .omitted, time: .shortened))" },
             ].compactMap { $0 }.joined(separator: " · ").nilIfEmpty)
             ForEach(Pane.allCases) { pane in
-                cell(row, pane).frame(width: Self.columnWidth)
+                cell(row, pane).frame(width: PanelLayout.columnWidth)
             }
         }
         .contentShape(Rectangle())
@@ -195,7 +193,7 @@ struct PanelView: View {
     /// is worth keeping, and none of it can be switched back on.
     private func leftoverRow(_ row: Row) -> some View {
         let on = Pane.allCases.filter(row.isAllowed).map(\.shortTitle)
-        return HStack(spacing: Self.columnSpacing) {
+        return HStack(spacing: PanelLayout.columnSpacing) {
             label(row, caption: on.isEmpty ? "Listed, switched off" : "\(on.formatted(.list(type: .and))) on")
             Button("Remove") { model.removeLeftovers([row.client]) }
                 .buttonStyle(PanelButtonStyle(prominent: false))

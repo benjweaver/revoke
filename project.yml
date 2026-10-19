@@ -90,7 +90,7 @@ targets:
   RevokeTests:
     type: bundle.unit-test
     platform: macOS
-    sources: [Tests, App/Links.swift, App/Pane.swift, App/TCCDatabase.swift]
+    sources: [Tests, App/Links.swift, App/Pane.swift, App/PanelLayout.swift, App/TCCDatabase.swift]
     dependencies:
       - target: Revoke
         embed: false
