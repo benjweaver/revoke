@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Releases the version in project.yml in one step: builds a notarised, universal
 # Revoke.app (see build.sh), publishes it as a GitHub release with its CHANGELOG.md
-# section as the notes, and points the Homebrew tap at it.
+# section as the notes, points the Homebrew tap at it, and retakes the README screenshots
+# in the macOS 27 VM (Scripts/screenshots.sh). SKIP_SCREENSHOTS=1 skips the screenshots.
 #   Scripts/release.sh
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -78,4 +79,22 @@ else
   git -C "$tapdir" commit -qam "revoke $version"
   git -C "$tapdir" push -q
   echo "Pointed $tap at $tag; its install test is running."
+fi
+
+# Retake the README screenshots from the release just published, in the macOS 27 VM
+# (see Scripts/screenshots.sh), and push them. The release is out by now, so a failure
+# here only warns: run Scripts/screenshots.sh by hand, then commit docs/screenshots.
+if [ "${SKIP_SCREENSHOTS:-}" = 1 ]; then
+  echo "Skipping the screenshots (SKIP_SCREENSHOTS=1)."
+elif zsh Scripts/screenshots.sh; then
+  if [ -n "$(git status --porcelain -- docs/screenshots)" ]; then
+    git add docs/screenshots
+    git commit -qm "Update the screenshots for $version"
+    git push -q
+    echo "Pushed the screenshots for $version."
+  else
+    echo "The screenshots are unchanged."
+  fi
+else
+  echo "warning: the screenshots failed; the release is out. Run zsh Scripts/screenshots.sh, then commit docs/screenshots." >&2
 fi
