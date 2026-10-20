@@ -36,14 +36,14 @@ mac() { zsh "$MAC_SH" "$@"; }
 
 # Quits what the run started and puts the VM back, however the script ends.
 cleanup() {
-	local status=$?
+	local rc=$?
 	trap - EXIT INT TERM
 	mac quit Claude >/dev/null 2>&1 || true
 	mac quit ChatGPT >/dev/null 2>&1 || true
 	mac quit Revoke >/dev/null 2>&1 || true
 	mac restore || true
 	mac down || true
-	exit $status
+	exit $rc
 }
 trap cleanup EXIT
 trap 'exit 130' INT TERM
