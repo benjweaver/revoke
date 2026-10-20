@@ -10,6 +10,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let prompt: LinkPrompt
     private var statusItem: NSStatusItem?
     private let popover = NSPopover()
+    private var panel: NSHostingController<PanelView>?
     private var window: NSWindow?
     /// Watches for clicks in other apps while the panel is open.
     private var outsideClicks: Any?
@@ -43,11 +44,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         item.button?.sendAction(on: [.leftMouseUp, .rightMouseUp])
         statusItem = item
 
-        let panel = NSHostingController(rootView: PanelView(model: model, settings: settings, filter: filter) { [weak self] in
-            self?.showSettings()
-        })
-        panel.sizingOptions = .preferredContentSize
-        popover.contentViewController = panel
+        let hosting = NSHostingController(rootView: makePanel(width: PanelLayout.preferredWidth))
+        hosting.sizingOptions = .preferredContentSize
+        popover.contentViewController = hosting
+        panel = hosting
         popover.behavior = .transient
         popover.delegate = self
         NSApp.mainMenu = Self.makeMainMenu()
@@ -127,6 +127,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         AppInfo.forget()
         model.refresh()
         model.refreshRunning()
+        // Fit the screen whose menu bar was clicked: on one narrower than the panel,
+        // macOS would otherwise cut off its right edge.
+        let screenWidth = (button.window?.screen ?? NSScreen.main)?.visibleFrame.width ?? PanelLayout.preferredWidth
+        let width = PanelLayout.width(forScreenWidth: screenWidth)
+        if let panel, panel.rootView.width != width {
+            panel.rootView = makePanel(width: width)
+        }
         NSApp.activate()
         popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
         // A transient popover only closes on outside clicks while Revoke is the
@@ -140,6 +147,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         runningTimer = timer
         outsideClicks = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown, .otherMouseDown]) { [weak self] _ in
             MainActor.assumeIsolated { self?.popover.performClose(nil) }
+        }
+    }
+
+    private func makePanel(width: CGFloat) -> PanelView {
+        PanelView(model: model, settings: settings, filter: filter, width: width) { [weak self] in
+            self?.showSettings()
         }
     }
 

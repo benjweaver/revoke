@@ -5,6 +5,15 @@ All notable changes are listed here. The format follows
 [Semantic Versioning](https://semver.org/). Each release's notes on GitHub come
 from its section below.
 
+## [Unreleased]
+
+### Fixed
+
+- The panel fits screens narrower than itself, such as a small display mode or a
+  virtual machine's 800-point display. It used to stay 800 points wide, and macOS cut
+  off its right edge, Settings button included. Now it narrows to the screen and app
+  names shorten first.
+
 ## [1.4.0] - 2026-10-17
 
 ### Added
