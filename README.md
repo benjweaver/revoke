@@ -287,7 +287,9 @@ replaces the network filter when its build number changes), add the version's se
 to `CHANGELOG.md`, then commit and push. `Scripts/release.sh` does the rest: it builds
 a universal app, signs it with the Developer ID, has Apple notarize it, publishes the
 zip as a GitHub release with that changelog section as the notes, and points the
-[Homebrew tap](https://github.com/benjweaver/homebrew-revoke) at it.
+[Homebrew tap](https://github.com/benjweaver/homebrew-revoke) at it. Then it runs
+`Scripts/screenshots.sh`, which retakes the shots above from the new release in a macOS 27
+UTM VM and commits them; `SKIP_SCREENSHOTS=1` skips that step.
 
 Notarizing needs an App Store Connect API key, saved once in the keychain as the
 notarytool profile `notary`:
