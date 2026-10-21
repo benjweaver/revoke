@@ -13,6 +13,10 @@ from its section below.
   virtual machine's 800-point display. It used to stay 800 points wide, and macOS cut
   off its right edge, Settings button included. Now it narrows to the screen and app
   names shorten first.
+- Revoke takes back links that an app registered again while Revoke wasn't running.
+  It used to take them back only when they changed hands while it ran, so after Claude
+  or ChatGPT started with Revoke quit, their links opened the app without asking until
+  something else changed.
 
 ## [1.4.0] - 2026-10-17
 
