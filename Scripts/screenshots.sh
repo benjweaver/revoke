@@ -13,7 +13,7 @@
 #   The link-prompt shot needs Claude's Links off: if they're on, Claude opens the link
 #   itself, the prompt never appears, and the script stops with an error rather than go on.
 # - agent-guides' mac.sh (MAC_SH, default ~/Dev/agent-guides/machines/bens-macbook-pro/
-#   tools/mac.sh), which reaches the VM over ssh as macos27 (HOST overrides that) and reads
+#   tools/mac.sh), which reaches the VM over ssh as macos27 (MAC_HOST overrides that; not HOST, which zsh sets to this Mac's name) and reads
 #   the Homebrew tap with gh.
 # - Revoke's own setup in the VM (its network filter and Full Disk Access) is kept there
 #   between runs; the script installs the app only, and doesn't grant anything.
@@ -26,7 +26,7 @@ set -eu
 cd "$(dirname "$0")/.."
 
 MAC_SH=${MAC_SH:-$HOME/Dev/agent-guides/machines/bens-macbook-pro/tools/mac.sh}
-host=${HOST:-macos27}
+host=${MAC_HOST:-macos27}
 tap=benjweaver/homebrew-revoke
 out=docs/screenshots
 grid=$out/revoke-grid.png
@@ -93,7 +93,9 @@ fi
 
 print "==> Starting the agents and preparing the desktop"
 mac prep light
-mac open Revoke
+# By path: `open -a Revoke` can pick another copy, such as an old build in ~/Applications,
+# which has its own permissions and may predate the Links column.
+mac open /Applications/Revoke.app
 sleep 4
 # Started hidden, so the grid shows them running without a window in the way.
 mac run 'open -g -a Claude; open -g -a ChatGPT'
