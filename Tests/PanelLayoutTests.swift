@@ -19,7 +19,7 @@ struct PanelLayoutTests {
 
     @Test func neverNarrowerThanItsColumns() {
         #expect(PanelLayout.width(forScreenWidth: 320) == PanelLayout.minimumWidth)
-        let columns = CGFloat(Pane.allCases.count) * (PanelLayout.columnWidth + PanelLayout.columnSpacing)
+        let columns = CGFloat(PanelLayout.columnCount) * (PanelLayout.columnWidth + PanelLayout.columnSpacing)
         #expect(PanelLayout.minimumWidth > columns + 2 * PanelLayout.padding)
     }
 }

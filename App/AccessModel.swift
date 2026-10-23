@@ -26,6 +26,12 @@ struct Row: Identifiable {
         if pane == .localNetwork && isBlockedFromLocalNetwork { return false }
         return entries[pane]?.access == .allowed
     }
+
+    /// Whether the app has any access switch on that Revoke can turn off.
+    func hasAccess(filterIsOn: Bool) -> Bool {
+        Pane.hasRevocableAccess(
+            client, entries: entries, isBlockedFromLocalNetwork: isBlockedFromLocalNetwork, filterIsOn: filterIsOn)
+    }
 }
 
 struct Activity {
@@ -297,14 +303,56 @@ final class AccessModel: ObservableObject {
         }
     }
 
-    /// Revokes Device Control and Screen & System Audio Recording for every
-    /// watched app, or only those from one developer. That includes what deleted
-    /// watched apps left behind.
-    func revokeWatched(vendor: String? = nil, reason: String?) {
+    /// A column switch in the Watched header row.
+    func set(_ pane: Pane, on: Bool, forWatched rows: [Row]) {
+        if pane == .running {
+            if !on { stopAll() }
+        } else if pane == .links {
+            if on {
+                let blocked = rows.map(\.client).filter {
+                    $0.bundleID.map(settings.linksBlocked.contains) == true
+                        || snapshot.links[$0]?.guarded.isEmpty == false
+                }
+                giveLinksBack(blocked.isEmpty ? rows.map(\.client) : blocked)
+            } else {
+                revokeWatched(panes: [.links], reason: nil)
+            }
+        } else if pane == .localNetwork, filter.isOn {
+            let clients = rows.map(\.client)
+            let ids = clients.compactMap(\.bundleID)
+            if on {
+                let unblocked = ids.filter(settings.localNetworkBlocked.contains)
+                for id in unblocked { settings.allowLocalNetwork(id) }
+                if !unblocked.isEmpty {
+                    let names = unblocked.map { AppInfo.name(.bundle($0)) }.sorted()
+                    lastActivity = Activity(
+                        text: "Stopped blocking Local Network for \(names.formatted(.list(type: .and)))",
+                        isError: false)
+                    log.notice("\(self.lastActivity?.text ?? "", privacy: .public)")
+                    sendBlocklist()
+                }
+                if !clients.contains(where: { snapshot.entries[$0]?[.localNetwork]?.access == .allowed }),
+                   let url = pane.settingsURL {
+                    NSWorkspace.shared.open(url)
+                }
+            } else {
+                revokeWatched(panes: [.localNetwork], reason: nil)
+            }
+        } else if !on, !pane.tccutilServices.isEmpty {
+            revokeWatched(panes: [pane], reason: nil)
+        } else if let url = pane.settingsURL {
+            NSWorkspace.shared.open(url)
+        }
+    }
+
+    /// Revokes access for every watched app, or only those from one developer. That
+    /// includes what deleted watched apps left behind.
+    func revokeWatched(panes: [Pane] = Pane.access, vendor: String? = nil, reason: String?) {
         var clients = Set(snapshot.entries.keys.filter(settings.isWatched))
         clients.formUnion(settings.addedClients)
+        clients.formUnion(runningAppIDs.union(stoppableIDs).map(Client.bundle).filter(settings.isWatched))
         if let vendor { clients = clients.filter { $0.vendor == vendor } }
-        revoke(Array(clients), panes: Pane.access, reason: reason)
+        revoke(Array(clients), panes: panes, reason: reason)
     }
 
     /// Clears the entries deleted apps left behind, all of them or the ones given.
@@ -420,20 +468,33 @@ final class AccessModel: ObservableObject {
     /// Resets access Revoke can't see, like Automation or the microphone, so the app
     /// asks again the next time it needs it.
     func reset(_ access: [OtherAccess], for client: Client) {
-        guard let id = client.bundleID, !access.isEmpty else { return }
+        reset(access, for: [client])
+    }
+
+    func reset(_ access: [OtherAccess], for clients: [Client]) {
+        let ids = clients.compactMap(\.bundleID).sorted()
+        guard !ids.isEmpty, !access.isEmpty else { return }
         let services = access.flatMap(\.tccutilServices)
-        let name = AppInfo.name(client)
         let what = access.count == 1 ? access[0].title : "other access"
-        log.notice("Resetting \(services, privacy: .public) for \(id, privacy: .public)")
+        log.notice("Resetting \(services, privacy: .public) for \(ids, privacy: .public)")
         enqueue {
+            var failures: [String: String] = [:]
+            for id in ids {
+                let client = Client.bundle(id)
+                if let error = await Revoker.reset(services, for: id, installed: !self.isMissing(client)) {
+                    failures[AppInfo.name(client)] = error
+                }
+            }
             let text: String
-            if let error = await Revoker.reset(services, for: id, installed: !self.isMissing(client)) {
-                text = "Couldn't reset \(what) for \(name): \(error)"
+            if let failure = failures.min(by: { $0.key < $1.key }) {
+                text = "Couldn't reset \(what) for \(failure.key): \(failure.value)"
+            } else if ids.count == 1 {
+                text = "Reset \(what) for \(AppInfo.name(.bundle(ids[0]))): it asks again next time"
             } else {
-                text = "Reset \(what) for \(name): it asks again next time"
+                text = "Reset \(what) for watched apps: they ask again next time"
             }
             log.notice("\(text, privacy: .public)")
-            self.lastActivity = Activity(text: text, isError: text.hasPrefix("Couldn't"))
+            self.lastActivity = Activity(text: text, isError: !failures.isEmpty)
         }
     }
 

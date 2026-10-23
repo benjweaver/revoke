@@ -22,6 +22,19 @@ enum Pane: CaseIterable, Identifiable {
     /// take away. Running isn't: stopping apps is Stop App's job.
     static let access = allCases.filter { $0 != .running }
 
+    /// Whether an app has any access switch on that Revoke can turn off.
+    static func hasRevocableAccess(
+        _ client: Client, entries: [Pane: Entry], isBlockedFromLocalNetwork: Bool, filterIsOn: Bool
+    ) -> Bool {
+        guard client.bundleID != nil else { return false }
+        return access.contains { pane in
+            if pane == .localNetwork {
+                return filterIsOn && !isBlockedFromLocalNetwork && entries[.localNetwork]?.access == .allowed
+            }
+            return entries[pane]?.access == .allowed
+        }
+    }
+
     /// Access that lets an app control the Mac or see what's on it. These open the menu
     /// bar lock, and list apps you don't watch under other apps with access.
     static let control: [Pane] = [.deviceControl, .screenRecording, .inputMonitoring]

@@ -71,4 +71,24 @@ struct PaneTests {
         // Any app can ask for files and folders, and for App Management.
         #expect(OtherAccess.askable(info: [:], entitlements: [:]) == [.files, .appManagement])
     }
+
+    @Test func rowAllAccessSwitchReflectsRevocableAccessOnly() {
+        let claude = Client.bundle("com.anthropic.claudefordesktop")
+        #expect(!Pane.hasRevocableAccess(claude, entries: [:], isBlockedFromLocalNetwork: false, filterIsOn: true))
+        #expect(Pane.hasRevocableAccess(
+            claude, entries: [.fullDiskAccess: Entry(access: .allowed)],
+            isBlockedFromLocalNetwork: false, filterIsOn: false))
+        #expect(Pane.hasRevocableAccess(
+            claude, entries: [.localNetwork: Entry(access: .allowed)],
+            isBlockedFromLocalNetwork: false, filterIsOn: true))
+        #expect(!Pane.hasRevocableAccess(
+            claude, entries: [.localNetwork: Entry(access: .allowed)],
+            isBlockedFromLocalNetwork: false, filterIsOn: false))
+        #expect(!Pane.hasRevocableAccess(
+            claude, entries: [.localNetwork: Entry(access: .allowed)],
+            isBlockedFromLocalNetwork: true, filterIsOn: true))
+        #expect(!Pane.hasRevocableAccess(
+            .path("/usr/local/bin/tool"), entries: [.fullDiskAccess: Entry(access: .allowed)],
+            isBlockedFromLocalNetwork: false, filterIsOn: true))
+    }
 }

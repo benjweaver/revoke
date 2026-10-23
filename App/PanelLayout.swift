@@ -7,6 +7,8 @@ enum PanelLayout {
     static let columnWidth: CGFloat = 56
     static let columnSpacing: CGFloat = 4
     static let padding: CGFloat = 16
+    /// Each Pane column plus the horizontal All Access column.
+    static let columnCount = Pane.allCases.count + 1
     /// Wide enough for every column and a long app name.
     static let preferredWidth: CGFloat = 800
     /// Room for the popover's border and its gap from the screen's edges.
@@ -16,7 +18,7 @@ enum PanelLayout {
 
     /// The narrowest the panel gets: every column, the padding, and a short name.
     static var minimumWidth: CGFloat {
-        2 * padding + minimumNameWidth + CGFloat(Pane.allCases.count) * (columnWidth + columnSpacing)
+        2 * padding + minimumNameWidth + CGFloat(columnCount) * (columnWidth + columnSpacing)
     }
 
     /// The panel's width on a screen this wide. On a narrow screen, such as a small

@@ -5,7 +5,13 @@ All notable changes are listed here. The format follows
 [Semantic Versioning](https://semver.org/). Each release's notes on GitHub come
 from its section below.
 
-## [Unreleased]
+## [1.5.0] - 2026-10-23
+
+### Added
+
+- Switches in the **Watched** header row to toggle each column across every watched app,
+  and an **All Access** column on each row to switch off all of one app's access (Device
+  Control through Links, plus resetting Other) while leaving Running as it is.
 
 ### Fixed
 
@@ -168,6 +174,7 @@ from its section below.
   deleted or replaced.
 - Apps from Anthropic and OpenAI are watched by default.
 
+[1.5.0]: https://github.com/benjweaver/revoke/releases/tag/v1.5.0
 [1.4.0]: https://github.com/benjweaver/revoke/releases/tag/v1.4.0
 [1.3.1]: https://github.com/benjweaver/revoke/releases/tag/v1.3.1
 [1.3.0]: https://github.com/benjweaver/revoke/releases/tag/v1.3.0

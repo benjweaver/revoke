@@ -31,6 +31,9 @@ the Mac or see what's on it (Device Control, Screen Recording, or Input Monitori
 | Local Network | The app can reach devices on your network, or they can connect to it | Blocks both with Revoke's network filter (below) |
 | Links | Web pages, emails, documents, and other apps can open it with a link (`claude://`, `codex://`, `claude-cli://`, `cursor://`, `antigravity://`, `dsh://`) or a file (`.skill`, `.mcpb`) | Revoke opens instead, shows you the whole link and who sent it, and opens the app only if you say so (below) |
 | Other | A menu rather than a switch: what the app can ask for that macOS doesn't let Revoke see (below) | Choose one to reset it with `tccutil`, or all of them |
+| All Access | Any of the app's access switches is on | Switches off every access switch the app has, Links included, and resets Other, leaving Running as it is |
+
+The **Watched** header row has a switch for each column too, to toggle that column across every watched app at once.
 
 **Other** covers Automation (controlling other apps with Apple events, as AppleScript
 does: Terminal, Finder, Mail, System Events, UTM), the camera, the microphone, Files &

@@ -66,22 +66,28 @@ struct PanelView: View {
         HStack(spacing: PanelLayout.columnSpacing) {
             Spacer()
             ForEach(Pane.allCases) { pane in
-                VStack(spacing: 3) {
-                    Image(systemName: pane.symbol)
-                    Text(pane.shortTitle).font(.caption2).lineLimit(2).multilineTextAlignment(.center)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                .foregroundStyle(.secondary)
-                .frame(width: PanelLayout.columnWidth, alignment: .top)
-                .tip(pane.explanation)
+                columnTitle(symbol: pane.symbol, title: pane.shortTitle, tip: pane.explanation)
             }
+            columnTitle(
+                symbol: "switch.2", title: "All Access",
+                tip: "All access: switches off every access switch the app has, Links included, and resets Other. Running stays as it is.")
         }
+    }
+
+    private func columnTitle(symbol: String, title: String, tip: String) -> some View {
+        VStack(spacing: 3) {
+            Image(systemName: symbol)
+            Text(title).font(.caption2).lineLimit(2).multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .foregroundStyle(.secondary)
+        .frame(width: PanelLayout.columnWidth, alignment: .top)
+        .tip(tip)
     }
 
     private func appList(watched: [Row], others: [Row], leftovers: [Row]) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            sectionTitle("Watched")
-                .tip("Apps Revoke looks after: Revoke All Watched and the automatic options cover them. Right-click one to stop it or stop watching it, or choose in Settings.")
+            watchedHeader(watched)
             if watched.isEmpty {
                 Text("No watched apps are installed or running.").foregroundStyle(.secondary)
             }
@@ -162,6 +168,20 @@ struct PanelView: View {
             .foregroundStyle(.secondary)
     }
 
+    private func watchedHeader(_ watched: [Row]) -> some View {
+        HStack(spacing: PanelLayout.columnSpacing) {
+            sectionTitle("Watched")
+                .tip("Apps Revoke looks after: Revoke All Watched and the automatic options cover them. Right-click one to stop it or stop watching it, or choose in Settings.")
+                .frame(maxWidth: .infinity, alignment: .leading)
+            if !watched.isEmpty {
+                ForEach(Pane.allCases) { pane in
+                    watchedCell(watched, pane).frame(width: PanelLayout.columnWidth)
+                }
+                watchedAllAccessCell(watched).frame(width: PanelLayout.columnWidth)
+            }
+        }
+    }
+
     private func row(_ row: Row) -> some View {
         HStack(spacing: PanelLayout.columnSpacing) {
             label(row, caption: [
@@ -171,6 +191,7 @@ struct PanelView: View {
             ForEach(Pane.allCases) { pane in
                 cell(row, pane).frame(width: PanelLayout.columnWidth)
             }
+            rowAllAccessCell(row).frame(width: PanelLayout.columnWidth)
         }
         .contentShape(Rectangle())
         .contextMenu {
@@ -247,6 +268,73 @@ struct PanelView: View {
         }
     }
 
+    @ViewBuilder
+    private func watchedCell(_ watched: [Row], _ pane: Pane) -> some View {
+        if pane == .links && watched.allSatisfy({ model.snapshot.links[$0.client] == nil }) {
+            Text("–")
+                .foregroundStyle(.tertiary)
+                .tip("No watched app registers links or files.")
+        } else if pane == .other {
+            watchedOtherMenu(watched)
+        } else if !model.snapshot.canRead(pane) {
+            Image(systemName: "questionmark")
+                .foregroundStyle(.tertiary)
+                .tip("Revoke needs Full Disk Access to see this.")
+        } else {
+            let isOn = watched.contains { row in
+                (pane == .localNetwork || row.client.bundleID != nil) && row.isAllowed(pane)
+            }
+            Toggle("All watched \(pane.title)", isOn: Binding(
+                get: { isOn },
+                set: { model.set(pane, on: $0, forWatched: watched) }))
+                .toggleStyle(AccessSwitchStyle())
+                .disabled(model.isRevoking)
+                .tip(watchedHelp(watched, pane, isOn: isOn))
+        }
+    }
+
+    @ViewBuilder
+    private func watchedAllAccessCell(_ watched: [Row]) -> some View {
+        let isOn = watched.contains { $0.hasAccess(filterIsOn: filter.isOn) }
+        if !isOn && !model.snapshot.canReadTCC {
+            Image(systemName: "questionmark")
+                .foregroundStyle(.tertiary)
+                .tip("Revoke needs Full Disk Access to see this.")
+        } else {
+            Toggle("All watched access", isOn: Binding(
+                get: { isOn },
+                set: { if !$0 { model.revokeWatched(reason: nil) } }))
+                .toggleStyle(AccessSwitchStyle())
+                .disabled(model.isRevoking)
+                .tip(isOn
+                     ? "Switches off every access switch the watched apps have, Links included, and resets Other. Running apps keep going."
+                     : "Every watched app's access switches are off.")
+        }
+    }
+
+    @ViewBuilder
+    private func rowAllAccessCell(_ row: Row) -> some View {
+        let isOn = row.hasAccess(filterIsOn: filter.isOn)
+        if row.client.bundleID == nil {
+            Text("–")
+                .foregroundStyle(.tertiary)
+                .tip("Only System Settings can change command-line tools listed by path.")
+        } else if !isOn && !model.snapshot.canReadTCC {
+            Image(systemName: "questionmark")
+                .foregroundStyle(.tertiary)
+                .tip("Revoke needs Full Disk Access to see this.")
+        } else {
+            Toggle("All access for \(row.name)", isOn: Binding(
+                get: { isOn },
+                set: { if !$0 { model.revoke([row.client], panes: Pane.access, reason: nil) } }))
+                .toggleStyle(AccessSwitchStyle())
+                .disabled(model.isRevoking)
+                .tip(isOn
+                     ? "Switches off every access switch \(row.name) has, Links included, and resets Other. Running stays as it is."
+                     : "All of \(row.name)'s access switches are off.")
+        }
+    }
+
     /// Access Revoke can't see gets a menu to reset it rather than a switch, which
     /// would have nothing true to show.
     private func otherMenu(_ row: Row) -> some View {
@@ -267,6 +355,52 @@ struct PanelView: View {
         .disabled(model.isRevoking)
         .accessibilityLabel("Reset other access for \(row.name)")
         .tip("\(row.name) can ask for \(access.map(\.title).formatted(.list(type: .and))). macOS doesn't let other apps see who has these, so this is a menu rather than a switch: reset one and \(row.name) asks again the next time it needs it. Revoke All Watched resets them all.")
+    }
+
+    private func watchedOtherMenu(_ watched: [Row]) -> some View {
+        let askable = Set(watched.flatMap { AppInfo.otherAccess($0.client) })
+        let access = OtherAccess.allCases.filter(askable.contains)
+        let clients = watched.map(\.client)
+        return Menu {
+            ForEach(access) { item in
+                Button("Reset \(item.title)") { model.reset([item], for: clients) }
+                    .help(item.explanation)
+            }
+            Divider()
+            Button("Reset All of These") { model.reset(access, for: clients) }
+        } label: {
+            Image(systemName: "arrow.counterclockwise")
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .disabled(model.isRevoking)
+        .accessibilityLabel("Reset other access for all watched apps")
+        .tip("Resets \(access.map(\.title).formatted(.list(type: .or))) for every watched app, so they ask again the next time they need it.")
+    }
+
+    private func watchedHelp(_ watched: [Row], _ pane: Pane, isOn: Bool) -> String {
+        if pane == .running {
+            return isOn
+                ? "Stops every watched app, its helpers, and everything they started, such as an agent's shells and tools. The switches stay as they are."
+                : "No watched apps are running. Switch an app's Running switch on to open it."
+        }
+        if pane == .links {
+            return isOn
+                ? "Switches Links off for every watched app, so Revoke asks you before links or files open them."
+                : "Revoke asks you before links or files open any watched app. Switch on to let them open directly."
+        }
+        if pane == .localNetwork && filter.isOn {
+            if isOn {
+                return "Blocks every watched app from reaching your local network."
+            }
+            return watched.contains(where: \.isBlockedFromLocalNetwork)
+                ? "Revoke is keeping watched apps off your local network. Switch on to stop blocking them."
+                : "Off in System Settings. Switching it on opens it."
+        }
+        return isOn
+            ? "Switches \(pane.title) off for every watched app."
+            : "Off for every watched app. Switching it on opens System Settings."
     }
 
     private func help(_ row: Row, _ pane: Pane) -> String {
