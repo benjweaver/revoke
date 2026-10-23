@@ -59,6 +59,10 @@ final class AccessModel: ObservableObject {
     @Published private(set) var stoppableIDs = Set<String>()
     /// Checks that apps haven't taken their links back from Revoke.
     private var linkTimer: Timer?
+    /// Whether keepLinksBlocked has looked once since launch. Links an app took while
+    /// Revoke wasn't running are already in the first snapshot, so they never show up
+    /// as a change.
+    private var checkedLinks = false
 
     init(settings: Settings, filter: NetworkFilter) {
         self.settings = settings
@@ -521,8 +525,10 @@ final class AccessModel: ObservableObject {
     /// ChatGPT does each time it starts. File types are left, since macOS would ask
     /// the person out of nowhere; the switch shows they're open again.
     private func keepLinksBlocked() {
-        // Only links can have changed hands in between, so look at those first.
-        guard readLinks(known: snapshot.entries.keys) != snapshot.links else { return }
+        // Only links can have changed hands in between, so look at those first. The
+        // first look after launch goes on regardless, for links taken while Revoke was quit.
+        guard !checkedLinks || readLinks(known: snapshot.entries.keys) != snapshot.links else { return }
+        checkedLinks = true
         refresh()
         let retaken = snapshot.links.filter { client, links in
             client.bundleID.map(settings.linksBlocked.contains) == true && links.open.contains { !$0.isFile }
