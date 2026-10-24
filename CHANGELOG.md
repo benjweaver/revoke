@@ -5,6 +5,13 @@ All notable changes are listed here. The format follows
 [Semantic Versioning](https://semver.org/). Each release's notes on GitHub come
 from its section below.
 
+## [Unreleased]
+
+### Fixed
+
+- Revoke no longer lists itself in Settings or among other apps with access. It
+  showed up once it had Full Disk Access, with a switch to watch itself.
+
 ## [1.5.0] - 2026-10-23
 
 ### Added
