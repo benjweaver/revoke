@@ -5,6 +5,15 @@ All notable changes are listed here. The format follows
 [Semantic Versioning](https://semver.org/). Each release's notes on GitHub come
 from its section below.
 
+## [Unreleased]
+
+### Added
+
+- **Menu bar lock opens** in Settings: while a watched app is running or has access, as
+  before, or only while one is running. With the second, quitting the agents or choosing
+  Stop All Apps closes the lock even if one still has Device Control, Screen Recording,
+  or Input Monitoring; the panel still lists that access.
+
 ## [1.5.1] - 2026-10-23
 
 ### Fixed

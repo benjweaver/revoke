@@ -236,6 +236,12 @@ final class AccessModel: ObservableObject {
             .map(\.name)
     }
 
+    /// Whether the menu bar lock is open: a watched app is running, or, unless the lock
+    /// is set to follow running apps only, one can control the Mac or see what's on it.
+    var lockIsOpen: Bool {
+        !runningNames.isEmpty || !settings.lockFollowsRunningOnly && !exposedNames.isEmpty
+    }
+
     /// Watched apps that are running now, helpers counted as their app.
     var runningNames: [String] {
         runningAppIDs.filter { settings.isWatched(.bundle($0)) }.map { AppInfo.name(.bundle($0)) }

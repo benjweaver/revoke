@@ -111,6 +111,11 @@ struct SettingsView: View {
             }
 
             Section {
+                Picker("Menu bar lock opens", selection: $settings.lockFollowsRunningOnly) {
+                    Text("While a watched app is running or has access").tag(false)
+                    Text("Only while a watched app is running").tag(true)
+                }
+                .tip("Access means Device Control, Screen Recording, or Input Monitoring. With the lock following running apps only, it closes once every watched app quits or is stopped, even with access left on.")
                 // A custom binding rather than onChange, so correcting the toggle after a
                 // failure doesn't register or unregister again.
                 Toggle("Open at login", isOn: Binding(get: { launchAtLogin }, set: { setLogin($0) }))
