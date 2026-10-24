@@ -112,6 +112,9 @@ sleep 2
 mac front Revoke
 sleep 1
 rect=$(wait_rect 25 2 2 -4 -7) || { print -u2 "screenshots.sh: no Revoke panel on screen"; exit 1; }
+# Up through the menu bar, so the lock the panel hangs from shows.
+r=(${(s:,:)rect})
+rect="${r[1]},0,${r[3]},$(( r[2] + r[4] ))"
 mac shot "$grid" "$rect"
 print -r -- "$grid"
 mac key esc
