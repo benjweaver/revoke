@@ -204,9 +204,15 @@ final class AccessModel: ObservableObject {
         client.bundleID != nil && !AppInfo.isInstalled(client) && !isAppleSystem(client)
     }
 
-    /// Parts of macOS that aren't apps, which System Settings doesn't list either.
+    /// Parts of macOS that aren't apps, which System Settings doesn't list either, and
+    /// Revoke itself and its network filter: the access it needs isn't a choice to make here.
     private func isHidden(_ client: Client) -> Bool {
-        isAppleSystem(client) && !AppInfo.isInstalled(client)
+        isRevoke(client) || isAppleSystem(client) && !AppInfo.isInstalled(client)
+    }
+
+    private func isRevoke(_ client: Client) -> Bool {
+        guard let id = client.bundleID, let me = Bundle.main.bundleIdentifier else { return false }
+        return id == me || id.hasPrefix(me + ".")
     }
 
     private func isAppleSystem(_ client: Client) -> Bool {
