@@ -33,6 +33,11 @@ final class Settings: ObservableObject {
     @Published var revokeOnSleepOrLock: Bool {
         didSet { defaults.set(revokeOnSleepOrLock, forKey: "revokeOnSleepOrLock"); onChange?() }
     }
+    /// Whether the menu bar lock opens only while a watched app is running, rather than
+    /// also while one has Device Control, Screen Recording, or Input Monitoring.
+    @Published var lockFollowsRunningOnly: Bool {
+        didSet { defaults.set(lockFollowsRunningOnly, forKey: "lockFollowsRunningOnly"); onChange?() }
+    }
     /// Watched apps from other developers, and unwatched ones from the watched developers.
     @Published private var added: Set<String> {
         didSet { defaults.set(Array(added), forKey: "watched") }
@@ -72,6 +77,7 @@ final class Settings: ObservableObject {
         let minutes = defaults.integer(forKey: "limitMinutes")
         limitMinutes = Self.timeLimits.contains(minutes) ? minutes : 30
         revokeOnSleepOrLock = defaults.bool(forKey: "revokeOnSleepOrLock")
+        lockFollowsRunningOnly = defaults.bool(forKey: "lockFollowsRunningOnly")
         added = Set(defaults.stringArray(forKey: "watched") ?? [])
         removed = Set(defaults.stringArray(forKey: "unwatched") ?? [])
         hidden = Set(defaults.stringArray(forKey: "hidden") ?? [])

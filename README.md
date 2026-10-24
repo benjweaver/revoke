@@ -19,7 +19,9 @@ work, and shouldn't keep it afterwards.
 
 One row per watched app and one switch per column. A switch is orange while the app
 can do that. The menu bar lock is open while any watched app is running or can control
-the Mac or see what's on it (Device Control, Screen Recording, or Input Monitoring).
+the Mac or see what's on it (Device Control, Screen Recording, or Input Monitoring). To
+have it close as soon as every watched app has quit or been stopped, even with access
+left on, set **Menu bar lock opens** in Settings to **Only while a watched app is running**.
 
 | Column | Orange means | Switching it off |
 |---|---|---|

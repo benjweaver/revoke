@@ -97,17 +97,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return false
     }
 
-    /// An open lock while any watched app is running or can control the Mac or see
-    /// what's on it, so a glance at the menu bar says whether anything was left on.
+    /// An open lock while any watched app is running or, by default, can control the Mac
+    /// or see what's on it, so a glance at the menu bar says whether anything was left on.
     private func updateIcon() {
         guard let button = statusItem?.button else { return }
-        let isOpen = !model.exposedNames.isEmpty || !model.runningNames.isEmpty
+        let isOpen = model.lockIsOpen
+        let what = settings.lockFollowsRunningOnly ? "is running" : "is running or has access"
         let symbol = !model.snapshot.canReadTCC ? "lock.trianglebadge.exclamationmark"
             : isOpen ? "lock.open.fill" : "lock.fill"
         button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: model.statusText)
         button.toolTip = !model.snapshot.canReadTCC ? "Revoke: \(model.statusText)"
-            : isOpen ? "Revoke: \(model.statusText). The lock stays open until no watched app is running or has access."
-            : "Revoke: \(model.statusText). No watched app is running or has access."
+            : isOpen ? "Revoke: \(model.statusText). The lock stays open until no watched app \(what)."
+            : "Revoke: \(model.statusText). No watched app \(what)."
     }
 
     @objc private func togglePanel() {

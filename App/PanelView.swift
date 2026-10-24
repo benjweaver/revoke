@@ -141,10 +141,14 @@ struct PanelView: View {
         if !model.snapshot.canReadTCC {
             return "Revoke can't read the permissions list without Full Disk Access, so the lock shows a warning."
         }
-        if !model.exposedNames.isEmpty || !model.runningNames.isEmpty {
-            return "The lock is open while a watched app is running or has Device Control, Screen Recording, Input Monitoring, or Automation."
+        if settings.lockFollowsRunningOnly {
+            return model.lockIsOpen
+                ? "The lock is open while a watched app is running."
+                : "The lock is closed: no watched app is running. Access left on is listed above, and a watched app gets it back when it starts."
         }
-        return "The lock is closed: no watched app is running or has Device Control, Screen Recording, Input Monitoring, or Automation."
+        return model.lockIsOpen
+            ? "The lock is open while a watched app is running or has Device Control, Screen Recording, or Input Monitoring."
+            : "The lock is closed: no watched app is running or has Device Control, Screen Recording, or Input Monitoring."
     }
 
     private var fullDiskAccessNotice: some View {
