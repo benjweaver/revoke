@@ -163,6 +163,10 @@ malware could give itself screen recording. So:
   Revoke isn't running after the app re-registered, goes straight to the app. A file
   type an app takes back stays with it until you switch Links off again, since taking
   it means a macOS dialog; the switch turns orange to show it.
+- **Revoke's other settings are yours to change, and so an agent's.** Which apps are
+  watched, the automatic revocations, and which links Revoke stands in for are kept in
+  Revoke's preferences in your account, where a process running as you can edit them
+  while Revoke is quit. Only the Local Network list is kept out of reach, by the filter.
 
 ## Blocking Local Network
 
@@ -182,6 +186,40 @@ The filter only sees connections to and from local-network addresses, and if it 
 or crashes macOS lets traffic through rather than cutting the Mac off. It can't block
 Bonjour discovery, which macOS's own mDNSResponder does on an app's behalf. Only Revoke,
 signed with the same Developer ID, can change what it blocks.
+
+The filter keeps its list of blocked apps itself, saved as root, and Revoke reads it
+from there each time the filter switches on. A blocked app can't lift its own block by
+editing Revoke's settings: only you can, by switching its Local Network back on in the
+panel or saying yes when it asks (see below). Revoke's automatic revocations only ever
+add blocks.
+
+## Asking for access
+
+An agent that finds something blocked can ask you for it instead of working around the
+block, by opening a link:
+
+```bash
+open "revoke://request?access=local-network&minutes=15&reason=Reach%20the%20test%20VM"
+```
+
+Revoke shows which app is asking, for what, for how long, and the reason in the app's
+own words. No is the default, and nothing changes unless you say yes.
+
+- `access` is `local-network`, `device-control`, `screen-recording`,
+  `input-monitoring`, or `full-disk-access`. Links and Running can't be asked for.
+- `minutes` is how long, from 1 to 240. Without it, 15.
+- `reason` is a line of text, at most 300 characters.
+- `app` is a bundle ID, used only when Revoke can't tell which process opened the link.
+  The question then says the app is only what the request claims.
+
+For Local Network, yes lets the app through for that long, and then the filter blocks
+it again by itself, even if Revoke has quit by then. For the rest, only System Settings
+can grant access, so yes opens the right pane for you to switch it on.
+
+Revoke works out who's asking from the process that opened the link and the apps it
+runs inside, not from the link, so one app can't ask in another's name. After a no,
+the same request from the same app is ignored for a minute. The link gets no answer
+back: the agent tries again and sees whether it works.
 
 ## Links
 

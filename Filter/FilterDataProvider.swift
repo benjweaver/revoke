@@ -10,12 +10,43 @@ import os
 /// The filter's rules only hand it connections to or from local-network addresses;
 /// the rest never reach this code. If the extension stops or crashes, macOS lets
 /// traffic through rather than cutting the Mac off.
-final class FilterDataProvider: NEFilterDataProvider {
+// Unchecked because NEFilterDataProvider isn't marked Sendable, though the system
+// already calls it from any thread. Its own state is immutable lets of Sendable
+// types, and the subnets it filters sit behind LocalNetwork's Mutex.
+final class FilterDataProvider: NEFilterDataProvider, @unchecked Sendable {
     private let control = ControlService()
     private let log = Logger(subsystem: "dev.benjweaver.Revoke.Filter", category: "filter")
+    /// Watches for the Mac joining or leaving a network, whose subnets then become
+    /// or stop being local.
+    private let pathMonitor = NWPathMonitor()
 
     override func startFilter(completionHandler: @escaping @Sendable (Error?) -> Void) {
         control.start()
+        LocalNetwork.refreshOnLinkRanges()
+        apply(settings()) { [weak self] error in
+            // Watched once the first settings are in, so a second apply can't land
+            // before them with older subnets.
+            if error == nil { self?.watchNetwork() }
+            completionHandler(error)
+        }
+    }
+
+    /// Rebuilds the rules when the Mac's subnets change. The first update arrives at
+    /// once and only reapplies if the subnets changed since the filter started.
+    private func watchNetwork() {
+        pathMonitor.pathUpdateHandler = { [weak self] _ in
+            guard LocalNetwork.refreshOnLinkRanges(), let self else { return }
+            self.log.notice("The network changed; filtering \(LocalNetwork.ranges.map { "\($0.address)/\($0.prefix)" }, privacy: .public)")
+            self.apply(self.settings()) { [log = self.log] error in
+                if let error { log.error("Couldn't update the filter's rules: \(error, privacy: .public)") }
+            }
+        }
+        pathMonitor.start(queue: DispatchQueue(label: "dev.benjweaver.Revoke.Filter.path"))
+    }
+
+    /// Rules that hand the filter every connection to or from a local-network
+    /// address, rebuilt whenever the Mac's subnets change.
+    private func settings() -> NEFilterSettings {
         let rules = LocalNetwork.ranges.map { range in
             NEFilterRule(networkRule: NENetworkRule(
                 remoteNetworkEndpoint: .hostPort(host: range.host, port: .any),
@@ -27,12 +58,11 @@ final class FilterDataProvider: NEFilterDataProvider {
                 // app runs, as Revoke for Windows closes its inbound firewall rules.
                 direction: .any), action: .filterData)
         }
-        apply(NEFilterSettings(rules: rules, defaultAction: .allow)) { error in
-            completionHandler(error)
-        }
+        return NEFilterSettings(rules: rules, defaultAction: .allow)
     }
 
     override func stopFilter(with reason: NEProviderStopReason, completionHandler: @escaping @Sendable () -> Void) {
+        pathMonitor.cancel()
         completionHandler()
     }
 

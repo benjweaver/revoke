@@ -1,0 +1,159 @@
+import AppKit
+import os
+
+private let log = Logger(subsystem: "dev.benjweaver.Revoke", category: "requests")
+
+/// An app opened a revoke://request link to ask for access. Shows the person who's
+/// asking, for what, and why, and changes nothing unless they say yes.
+///
+/// Revoke can lift its own Local Network block, for the time asked. The privacy lists
+/// are macOS's, which only System Settings can add to, so for those a yes opens the
+/// right pane. Who's asking comes from the process that opened the link and the apps it
+/// runs inside, not from the link, so an app can't ask in another's name.
+@MainActor
+final class AccessRequestPrompt {
+    private let settings: Settings
+    private let model: AccessModel
+    /// Requests wait their turn while a question is up, so each gets its own answer.
+    private var waiting: [(request: AccessRequest, apps: [String], isClaimed: Bool)] = []
+    private var isAsking = false
+    /// When the person last said no, by app and access. The same request is ignored
+    /// for a while after, so an app can't keep asking until a click lands on Yes.
+    private var declined: [String: Date] = [:]
+    private static let quietAfterNo: TimeInterval = 60
+    /// How far up the chain of parent processes to look for the app that asked.
+    private static let maxAncestors = 16
+
+    init(settings: Settings, model: AccessModel) {
+        self.settings = settings
+        self.model = model
+    }
+
+    /// `sender` is the process that asked macOS to open the link, from the Apple event.
+    func receive(_ url: URL, sender: pid_t?) {
+        guard let request = AccessRequest(url: url) else {
+            log.error("Ignored a request Revoke couldn't read: \(url.absoluteString, privacy: .public)")
+            model.note("Ignored a request for access that Revoke couldn't read")
+            return
+        }
+        // Looked up now: a command like `open` is gone moments after it sends the link.
+        var apps = sender.map(Self.apps(behind:)) ?? []
+        var isClaimed = false
+        if apps.isEmpty, let claimed = request.claimedApp, AppInfo.isInstalled(.bundle(claimed)) {
+            apps = [claimed]
+            isClaimed = true
+        }
+        waiting.append((request, apps, isClaimed))
+        askNext()
+    }
+
+    private func askNext() {
+        guard !isAsking, !waiting.isEmpty else { return }
+        isAsking = true
+        let (request, apps, isClaimed) = waiting.removeFirst()
+        ask(request, apps: apps, isClaimed: isClaimed)
+        isAsking = false
+        DispatchQueue.main.async { [weak self] in self?.askNext() }
+    }
+
+    /// `isClaimed` is when the app is only the link's word for it, which the question says.
+    private func ask(_ request: AccessRequest, apps: [String], isClaimed: Bool) {
+        let pane = request.pane
+        // A command's own app is the one the person knows: Claude, not the shell inside it.
+        guard let app = apps.first(where: { settings.isWatched(.bundle($0)) }) ?? apps.first else {
+            log.notice("Ignored a request for \(pane.shortTitle, privacy: .public) from an unknown process")
+            model.note("Something asked for \(pane.title), but Revoke couldn't tell which app it was")
+            return
+        }
+        let name = AppInfo.name(.bundle(app))
+        let key = "\(app) \(pane)"
+        if let last = declined[key], Date().timeIntervalSince(last) < Self.quietAfterNo {
+            log.notice("Ignored \(name, privacy: .public) asking for \(pane.shortTitle, privacy: .public) again so soon")
+            return
+        }
+
+        // Every app in the chain that the filter blocks has to be let through, since
+        // a block on any one of them stops the command.
+        let blocked = apps.filter(settings.localNetworkBlocked.contains)
+        if pane == .localNetwork {
+            guard model.filter.isOn, !blocked.isEmpty else {
+                model.note("\(name) asked for Local Network, which Revoke isn't blocking")
+                return
+            }
+        } else if model.snapshot.entries[.bundle(app)]?[pane]?.access == .allowed {
+            model.note("\(name) asked for \(pane.title), which it already has")
+            return
+        }
+
+        let duration = Settings.describe(minutes: request.minutes)
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        if let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: app) {
+            alert.icon = NSWorkspace.shared.icon(forFile: url.path)
+        }
+        var warning: String
+        let who = isClaimed ? "Something, saying it's \(name)," : name
+        if pane == .localNetwork {
+            alert.messageText = "\(who) is asking for \(pane.title) for \(duration):"
+            warning = "Say yes only if you're expecting this. Revoke blocks it again after \(duration). The reason is \(name)'s own words, not Revoke's."
+        } else {
+            alert.messageText = "\(who) is asking for \(pane.title):"
+            warning = "Say yes only if you're expecting this. Only you can switch it on, so Yes opens System Settings. The reason is \(name)'s own words, not Revoke's."
+        }
+        if isClaimed { warning += " Revoke couldn't tell which app sent this, so \(name) is only what the request says." }
+        let reason = request.reason.map { Links.shown($0).text } ?? "It gave no reason."
+        alert.accessoryView = LinkPrompt.accessory(shown: reason, warning: warning, question: "Allow \(pane.title)?")
+        // No comes first, so it's the default and Return says no.
+        alert.addButton(withTitle: "No")
+        alert.addButton(withTitle: "Yes").keyEquivalent = ""
+        alert.layout()
+        alert.window.level = .floating
+        NSApp.activate()
+
+        guard alert.runModal() == .alertSecondButtonReturn else {
+            declined[key] = Date()
+            log.notice("Turned down \(name, privacy: .public) asking for \(pane.shortTitle, privacy: .public)")
+            model.note("Turned down \(name) asking for \(pane.title)")
+            return
+        }
+        log.notice("Said yes to \(name, privacy: .public) asking for \(pane.shortTitle, privacy: .public)")
+        if pane == .localNetwork {
+            model.allowLocalNetwork(blocked, minutes: request.minutes, name: name)
+        } else if let url = pane.settingsURL {
+            NSWorkspace.shared.open(url)
+            model.note("Opened System Settings for you to allow \(pane.title) for \(name)")
+        }
+    }
+
+    // MARK: - Who's asking
+
+    /// The apps a process runs inside, by bundle ID, nearest first: its own bundle, any
+    /// app that bundle sits in, then the same for each parent. A command an agent runs
+    /// gives the agent's engine and the app around it.
+    static func apps(behind pid: pid_t) -> [String] {
+        guard pid > 0, pid != getpid() else { return [] }
+        let me = Bundle.main.bundleIdentifier
+        var apps: [String] = []
+        var current: pid_t? = pid
+        for _ in 0...maxAncestors {
+            guard let process = current, process > 1 else { break }
+            if let path = Processes.path(of: process) {
+                for id in bundleIDs(containing: path) where id != me && !apps.contains(id) { apps.append(id) }
+            }
+            current = Processes.parent(of: process)
+        }
+        return apps
+    }
+
+    /// The bundle IDs of every app a path is inside, innermost first.
+    private static func bundleIDs(containing path: String) -> [String] {
+        var ids: [String] = []
+        var search = path.startIndex..<path.endIndex
+        while let end = path.range(of: ".app/", range: search) {
+            let app = String(path[..<end.lowerBound]) + ".app"
+            if let id = Bundle(path: app)?.bundleIdentifier { ids.insert(id, at: 0) }
+            search = end.upperBound..<path.endIndex
+        }
+        return ids
+    }
+}

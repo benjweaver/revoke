@@ -116,11 +116,26 @@ enum Pane: CaseIterable, Identifiable {
         }
     }
 
+    /// Further services in the system's TCC database that System Settings lists under
+    /// the same column. Posting synthetic clicks and keys (PostEvent) is in the
+    /// Accessibility list, so Device Control reads and resets it too.
+    var extraTCCServices: [String] {
+        switch self {
+        case .deviceControl: ["kTCCServicePostEvent"]
+        default: []
+        }
+    }
+
+    /// The column a service in the system's TCC database belongs to.
+    static func pane(forTCCService service: String) -> Pane? {
+        allCases.first { $0.tccService == service || $0.extraTCCServices.contains(service) }
+    }
+
     /// The names `tccutil reset` takes. System Settings lists System Audio Recording
     /// Only in the screen recording pane, so revoking screen recording revokes both.
     var tccutilServices: [String] {
         switch self {
-        case .deviceControl: ["Accessibility"]
+        case .deviceControl: ["Accessibility", "PostEvent"]
         case .screenRecording: ["ScreenCapture", "AudioCapture"]
         case .inputMonitoring: ["ListenEvent"]
         case .fullDiskAccess: ["SystemPolicyAllFiles"]
@@ -163,6 +178,16 @@ enum OtherAccess: CaseIterable, Identifiable {
     case appManagement
     /// Contacts, Calendars, Reminders and Photos.
     case personalData
+    /// Reading and changing the data other apps keep.
+    case otherAppsData
+    /// Changing system administration files.
+    case systemFiles
+    /// Running code the system would otherwise stop, and debugging other processes.
+    case developerTools
+    case bluetooth
+    case speechRecognition
+    /// Controlling the Mac the way Remote Management and screen sharing do.
+    case remoteDesktop
 
     var id: Self { self }
 
@@ -174,6 +199,12 @@ enum OtherAccess: CaseIterable, Identifiable {
         case .files: "Files & Folders"
         case .appManagement: "App Management"
         case .personalData: "Contacts, Calendars, Reminders & Photos"
+        case .otherAppsData: "Other Apps' Data"
+        case .systemFiles: "System Administration Files"
+        case .developerTools: "Developer Tools"
+        case .bluetooth: "Bluetooth"
+        case .speechRecognition: "Speech Recognition"
+        case .remoteDesktop: "Remote Desktop"
         }
     }
 
@@ -186,6 +217,12 @@ enum OtherAccess: CaseIterable, Identifiable {
         case .files: "Lets the app read and change what's in Desktop, Documents, and Downloads, and on network and removable volumes."
         case .appManagement: "Lets the app change or delete other apps, Revoke included."
         case .personalData: "Lets the app read your contacts, calendars, reminders, and photos."
+        case .otherAppsData: "Lets the app read and change the data other apps keep in their own folders, without asking you each time."
+        case .systemFiles: "Lets the app change system administration files, such as the ones that set up users and network services."
+        case .developerTools: "Lets the app run code the system would normally stop and attach to other processes to debug them."
+        case .bluetooth: "Lets the app connect to Bluetooth devices."
+        case .speechRecognition: "Lets the app send what it hears to Apple's speech recognition."
+        case .remoteDesktop: "Lets the app control this Mac the way Remote Management and screen sharing do."
         }
     }
 
@@ -198,18 +235,27 @@ enum OtherAccess: CaseIterable, Identifiable {
                       "SystemPolicyNetworkVolumes", "SystemPolicyRemovableVolumes"]
         case .appManagement: ["SystemPolicyAppBundles"]
         case .personalData: ["AddressBook", "Calendar", "Reminders", "Photos"]
+        case .otherAppsData: ["SystemPolicyAppData"]
+        case .systemFiles: ["SystemPolicySysAdminFiles"]
+        case .developerTools: ["DeveloperTool"]
+        case .bluetooth: ["BluetoothAlways"]
+        case .speechRecognition: ["SpeechRecognition"]
+        case .remoteDesktop: ["RemoteDesktop"]
         }
     }
 
     /// The Info.plist keys that show an app can ask for it. macOS turns an app down, or
-    /// stops it, when it asks without one. Any app can ask for files and folders, and
-    /// for App Management, which has no key.
+    /// stops it, when it asks without one. Any app can ask for files and folders, App
+    /// Management, other apps' data, system administration files, developer tools, and
+    /// remote desktop, which have no key.
     var usageKeys: [String]? {
         switch self {
         case .automation: ["NSAppleEventsUsageDescription"]
         case .camera: ["NSCameraUsageDescription"]
         case .microphone: ["NSMicrophoneUsageDescription"]
-        case .files, .appManagement: nil
+        case .files, .appManagement, .otherAppsData, .systemFiles, .developerTools, .remoteDesktop: nil
+        case .bluetooth: ["NSBluetoothAlwaysUsageDescription"]
+        case .speechRecognition: ["NSSpeechRecognitionUsageDescription"]
         case .personalData: ["NSContactsUsageDescription", "NSCalendarsUsageDescription", "NSCalendarsFullAccessUsageDescription",
                              "NSCalendarsWriteOnlyAccessUsageDescription", "NSRemindersUsageDescription",
                              "NSRemindersFullAccessUsageDescription", "NSPhotoLibraryUsageDescription",
@@ -224,7 +270,9 @@ enum OtherAccess: CaseIterable, Identifiable {
         case .automation: ["com.apple.security.automation.apple-events"]
         case .camera: ["com.apple.security.device.camera"]
         case .microphone: ["com.apple.security.device.audio-input", "com.apple.security.device.microphone"]
-        case .files, .appManagement: []
+        case .files, .appManagement, .otherAppsData, .systemFiles, .developerTools, .remoteDesktop: []
+        case .bluetooth: ["com.apple.security.device.bluetooth"]
+        case .speechRecognition: []
         case .personalData: ["com.apple.security.personal-information.addressbook", "com.apple.security.personal-information.calendars",
                              "com.apple.security.personal-information.photos-library"]
         }

@@ -51,7 +51,9 @@ final class Settings: ObservableObject {
     }
     /// The time limit never counts from before it was switched on.
     private(set) var limitStart: Date
-    /// Apps, by bundle ID, that the network filter keeps off the local network.
+    /// Apps, by bundle ID, that the network filter keeps off the local network, as it
+    /// last said. This is a copy for the panel only: the filter's own list, saved as
+    /// root, is the one that counts, and Revoke never sends this one back to it.
     @Published private(set) var localNetworkBlocked: Set<String> {
         didSet { defaults.set(localNetworkBlocked.sorted(), forKey: "localNetworkBlocked"); onChange?() }
     }
@@ -114,12 +116,10 @@ final class Settings: ObservableObject {
 
     var hiddenClients: [Client] { hidden.map(Client.init(key:)) }
 
-    func blockLocalNetwork(_ bundleIDs: some Sequence<String>) {
-        localNetworkBlocked.formUnion(bundleIDs)
-    }
-
-    func allowLocalNetwork(_ bundleID: String) {
-        localNetworkBlocked.remove(bundleID)
+    /// Takes on the list the network filter answered with.
+    func adoptLocalNetworkBlocked(_ bundleIDs: some Sequence<String>) {
+        let list = Set(bundleIDs)
+        if list != localNetworkBlocked { localNetworkBlocked = list }
     }
 
     func setLinksBlocked(_ bundleID: String, _ blocked: Bool) {
@@ -135,6 +135,8 @@ final class Settings: ObservableObject {
     var addedClients: [Client] { added.map(Client.init(key:)) }
 
     static func describe(minutes: Int) -> String {
-        minutes < 60 ? "\(minutes) minutes" : minutes == 60 ? "1 hour" : "\(minutes / 60) hours"
+        // A request can ask for any number of minutes, not only the time limits above.
+        if minutes < 60 || minutes % 60 != 0 { return minutes == 1 ? "1 minute" : "\(minutes) minutes" }
+        return minutes == 60 ? "1 hour" : "\(minutes / 60) hours"
     }
 }

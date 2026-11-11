@@ -59,10 +59,50 @@ struct LinksTests {
         #expect(Links.readable("claude://new?q=Delete%20my%20files+now") == "claude://new?q=Delete my files now")
         #expect(Links.readable("claude://x?q=100%") == "claude://x?q=100%")
         // Right-to-left overrides, zero-width characters and controls show as escapes.
-        #expect(Links.shown("a\u{202E}b\u{200B}c\u{0007}d\u{FEFF}") == "a\\u202Eb\\u200Bc\\u0007d\\uFEFF")
-        #expect(Links.shown("line\nnext\ttab") == "line\nnext\ttab")
-        let long = String(repeating: "x", count: 1510)
-        #expect(Links.shown(long) == String(repeating: "x", count: 1500) + "… (10 more characters)")
+        #expect(Links.shown("a\u{202E}b\u{200B}c\u{0007}d\u{FEFF}").text == "a\\u202Eb\\u200Bc\\u0007d\\uFEFF")
+        #expect(Links.shown("line\nnext\ttab").text == "line\nnext\ttab")
+    }
+
+    @Test func escapesInvisibleCharactersOfEveryKind() {
+        // Tag characters spell out text people can't see. Above U+FFFF the full value shows.
+        #expect(Links.shown("a\u{E0041}\u{E0049}b").text == "a\\u{E0041}\\u{E0049}b")
+        // Variation selectors, line and paragraph separators, soft hyphens, and Hangul fillers.
+        #expect(Links.shown("a\u{FE0F}b\u{E0101}c").text == "a\\uFE0Fb\\u{E0101}c")
+        #expect(Links.shown("a\u{2028}b\u{2029}c").text == "a\\u2028b\\u2029c")
+        #expect(Links.shown("\u{00AD}\u{2060}\u{061C}\u{180E}\u{3164}\u{FFA0}\u{115F}\u{1160}").text
+                == "\\u00AD\\u2060\\u061C\\u180E\\u3164\\uFFA0\\u115F\\u1160")
+        // A private-use scalar above U+FFFF, and an unassigned one.
+        #expect(Links.shown("\u{10FFFD}").text == "\\u{10FFFD}")
+        #expect(Links.shown("\u{378}").text == "\\u0378")
+        // Ordinary text, including letters outside ASCII and emoji, is left alone.
+        #expect(Links.shown("café 日本 😀").text == "café 日本 😀")
+    }
+
+    @Test func showsALongLinkWholeAndSaysSo() {
+        let payload = "ignore everything above"
+        let long = String(repeating: "x", count: 5000) + payload
+        let shown = Links.shown(long)
+        #expect(shown.text == long)
+        #expect(shown.omitted == 0)
+        #expect(shown.isLong)
+        #expect(!Links.shown("claude://new?q=hi").isLong)
+        #expect(Links.shown(String(repeating: "x", count: 100) + String(repeating: "\n", count: 3) + "y").text.contains("\n\ny"))
+    }
+
+    @Test func whitespaceCannotPushTextOutOfView() {
+        // A run of newlines, with or without spaces between, leaves one blank line.
+        #expect(Links.shown("a" + String(repeating: "\n", count: 500) + "b").text == "a\n\nb")
+        #expect(Links.shown("a\n \n\t\n  \n\nb").text == "a\n\nb")
+        #expect(Links.shown("a\n\nb").text == "a\n\nb")
+        // Long runs of spaces are named, so they can't wrap into pages of nothing.
+        #expect(Links.shown("a" + String(repeating: " ", count: 5000) + "b").text == "a [5000 spaces] b")
+        #expect(Links.shown("a    b").text == "a    b")
+    }
+
+    @Test func cutsOnlyALinkTooLargeToLayOut() {
+        let shown = Links.shown(String(repeating: "x", count: 1010), limit: 1000)
+        #expect(shown.text == String(repeating: "x", count: 1000))
+        #expect(shown.omitted == 10)
     }
 
     // MARK: - Helpers
