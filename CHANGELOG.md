@@ -40,6 +40,10 @@ from its section below.
   behind.
 - The panel says so when the filter didn't take a change, and follows the filter being
   switched off in System Settings.
+- After an update, the new filter could start unable to hear Revoke, because the one
+  it replaced still held their shared service name. It kept blocking, but its list
+  couldn't be read or changed until the Mac restarted. Revoke now starts the filter
+  again when that happens.
 - One failed reset no longer stops the rest of an app's access from being revoked, and a
   time limit that can't revoke something waits before trying again.
 ## [1.5.2] - 2026-10-24

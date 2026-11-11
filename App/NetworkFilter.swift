@@ -163,7 +163,7 @@ final class NetworkFilter: NSObject, ObservableObject {
         _ request: @escaping @Sendable (FilterControl, @escaping @Sendable ([String]) -> Void) -> Void
     ) async -> Result<[String], Failure> {
         var lastError: Error?
-        for attempt in 0..<2 {
+        for attempt in 0..<3 {
             guard isOn else { return .failure(Failure(errorDescription: "The network filter is off.")) }
             let connection = self.connection ?? connect()
             let answer: Result<[String], Error> = await withCheckedContinuation { continuation in
@@ -177,12 +177,48 @@ final class NetworkFilter: NSObject, ObservableObject {
             if case .success(let list) = answer { return .success(list) }
             if case .failure(let error) = answer { lastError = error }
             let code = lastError.map { ($0 as NSError).code }
-            guard attempt == 0, code == NSXPCConnectionInterrupted || code == NSXPCConnectionInvalid else { break }
+            guard code == NSXPCConnectionInterrupted || code == NSXPCConnectionInvalid else { break }
             forget(connection)
+            // A second failure means the filter isn't listening, which a fresh
+            // connection can't fix. Starting the filter again can, once.
+            if attempt == 1 {
+                guard !restarted else { break }
+                restarted = true
+                await restartProvider()
+            }
         }
         let description = lastError?.localizedDescription ?? "The network filter didn't answer."
         log.error("Can't reach the network filter: \(description, privacy: .public)")
         return .failure(Failure(errorDescription: description))
+    }
+
+    /// Whether this run of Revoke has already started the filter again.
+    private var restarted = false
+
+    /// Switches the filter off and on, which starts its provider afresh. A filter that
+    /// took over from an older one can come up unable to hear Revoke: the older one
+    /// still held the name of the service they share. It keeps blocking what it was
+    /// told to, but can't be read or changed until it starts again. Connections aren't
+    /// filtered for the moment in between.
+    private func restartProvider() async {
+        log.notice("The network filter isn't answering; starting it again")
+        let manager = NEFilterManager.shared()
+        for enabled in [false, true] {
+            await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+                manager.loadFromPreferences { _ in
+                    MainActor.assumeIsolated {
+                        NEFilterManager.shared().isEnabled = enabled
+                        NEFilterManager.shared().saveToPreferences { error in
+                            if let error { log.error("Couldn't switch the filter \(enabled ? "on" : "off", privacy: .public): \(error.localizedDescription, privacy: .public)") }
+                            continuation.resume()
+                        }
+                    }
+                }
+            }
+        }
+        // The provider takes a moment to come up and start listening.
+        try? await Task.sleep(for: .seconds(2))
+        state = .on
     }
 
     private func connect() -> NSXPCConnection {

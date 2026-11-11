@@ -9,7 +9,7 @@ import Synchronization
 /// account (and an agent running as them) can't change it, so it's the one that
 /// counts: the app reads it from here rather than sending its own.
 // Unchecked because NSXPCListener isn't Sendable. The listener is only touched in
-// start(), and the list itself sits behind a Mutex.
+// start(), which the system calls one at a time, and the lists sit behind a Mutex.
 final class ControlService: NSObject, NSXPCListenerDelegate, FilterControl, @unchecked Sendable {
     private static let key = "blocked"
     private static let allowedKey = "allowedUntil"
@@ -53,12 +53,18 @@ final class ControlService: NSObject, NSXPCListenerDelegate, FilterControl, @unc
     /// filter then starts or stops looking at connections to the internet. Set once,
     /// before `start`.
     nonisolated(unsafe) var onLimitsChange: (@Sendable () -> Void)?
-    private let listener = NSXPCListener(machServiceName: FilterIdentity.machService)
+    /// Made anew each time the filter starts. A listener that failed to open, as one
+    /// does when a newer filter starts while the one it replaces still holds the
+    /// service's name, never recovers, and nothing reports that it failed.
+    nonisolated(unsafe) private var listener: NSXPCListener?
     private let log = Logger(subsystem: "dev.benjweaver.Revoke.Filter", category: "control")
 
     func start() {
+        listener?.invalidate()
+        let listener = NSXPCListener(machServiceName: FilterIdentity.machService)
         listener.delegate = self
         listener.resume()
+        self.listener = listener
     }
 
     var isEmpty: Bool { lists.withLock { $0.blocked.isEmpty } }
