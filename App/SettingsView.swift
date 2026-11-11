@@ -7,6 +7,7 @@ struct SettingsView: View {
     @ObservedObject var filter: NetworkFilter
     @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
     @State private var loginError: String?
+    @State private var extraHosts = ""
 
     var body: some View {
         Form {
@@ -30,6 +31,21 @@ struct SettingsView: View {
                 Text("Local Network")
             } footer: {
                 Text("macOS lets only System Settings change its Local Network switch, so Revoke blocks the traffic itself, with a network filter like LuLu's. Revoked apps can't connect to devices on your network, commands they start included, and those devices can't connect to them, but the apps still reach the internet and servers on this Mac. Bonjour discovery isn't blocked, because macOS does it on the app's behalf.")
+                    .foregroundStyle(.secondary)
+            }
+
+            Section {
+                TextField("Other hosts to allow", text: $extraHosts, prompt: Text("proxy.example.com, models.example.org"))
+                    .onSubmit { saveExtraHosts() }
+                    .tip("Hosts every limited app may reach besides its developer's own, such as a proxy or a model you host. Subdomains count. Press Return to save.")
+                if extraHosts != settings.extraInternetHosts.joined(separator: ", ") {
+                    Button("Save Hosts") { saveExtraHosts() }
+                        .tip("Saves the list. Anything that isn't a host name with a dot in it is left out.")
+                }
+            } header: {
+                Text("Internet")
+            } footer: {
+                Text("Right-click a watched app in the panel and choose Limit Internet to Its Model. The network filter then drops its connections to the internet, commands it starts included, except to its developer's own hosts (Anthropic's for Claude, OpenAI's for ChatGPT) and the ones here. The local network keeps its own switch. A change here applies the next time you limit an app. The filter goes by the host name a connection gives, which stops an agent that was talked into visiting a site, not one built to lie about where it's going.")
                     .foregroundStyle(.secondary)
             }
 
@@ -150,6 +166,11 @@ struct SettingsView: View {
             if launchAtLogin { loginError = nil }
             model.refresh()
         }
+    }
+
+    private func saveExtraHosts() {
+        settings.extraInternetHosts = InternetHosts.parse(extraHosts)
+        extraHosts = settings.extraInternetHosts.joined(separator: ", ")
     }
 
     /// The same list as the README's, kept short.

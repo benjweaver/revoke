@@ -3,6 +3,7 @@ import Foundation
 /// What an agent asks Revoke for with a link: one kind of access, for a while, and why.
 ///
 ///     revoke://request?access=local-network&minutes=15&reason=Reach%20the%20test%20VM
+///     revoke://request?access=internet&minutes=10&reason=Push%20the%20branch
 ///
 /// An agent that finds something blocked can open one of these instead of working around
 /// the block. Revoke shows the person who's asking and for what, and nothing changes
@@ -19,16 +20,33 @@ struct AccessRequest: Equatable {
 
     /// The names a link uses for each kind of access Revoke can be asked for. Links and
     /// Running aren't here: an agent has no business switching those on for itself.
-    static let names: [String: Pane] = [
-        "local-network": .localNetwork,
-        "device-control": .deviceControl,
-        "accessibility": .deviceControl,
-        "screen-recording": .screenRecording,
-        "input-monitoring": .inputMonitoring,
-        "full-disk-access": .fullDiskAccess,
+    static let names: [String: What] = [
+        "local-network": .pane(.localNetwork),
+        "device-control": .pane(.deviceControl),
+        "accessibility": .pane(.deviceControl),
+        "screen-recording": .pane(.screenRecording),
+        "input-monitoring": .pane(.inputMonitoring),
+        "full-disk-access": .pane(.fullDiskAccess),
+        "internet": .internet,
     ]
 
-    let pane: Pane
+    enum What: Equatable {
+        /// One of the panel's columns.
+        case pane(Pane)
+        /// The whole internet, for an app kept to its model provider's hosts.
+        case internet
+
+        var title: String {
+            switch self {
+            case .pane(let pane): pane.title
+            case .internet: "the whole internet"
+            }
+        }
+    }
+
+    let what: What
+    /// The column asked for, when it is one.
+    var pane: Pane? { if case .pane(let pane) = what { pane } else { nil } }
     /// How long the access is wanted for, between 1 and `maxMinutes`.
     let minutes: Int
     let reason: String?
@@ -49,8 +67,8 @@ struct AccessRequest: Equatable {
         func value(_ name: String) -> String? {
             items.first { $0.name == name }?.value?.trimmingCharacters(in: .whitespacesAndNewlines)
         }
-        guard let access = value("access")?.lowercased(), let pane = Self.names[access] else { return nil }
-        self.pane = pane
+        guard let access = value("access")?.lowercased(), let what = Self.names[access] else { return nil }
+        self.what = what
         minutes = value("minutes").flatMap(Int.init).map { min(max($0, 1), Self.maxMinutes) } ?? Self.defaultMinutes
         let reason = value("reason") ?? ""
         self.reason = reason.isEmpty ? nil : String(String.UnicodeScalarView(reason.unicodeScalars.prefix(Self.reasonLimit)))

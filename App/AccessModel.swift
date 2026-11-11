@@ -368,6 +368,9 @@ final class AccessModel: ObservableObject {
     /// Shows the network filter's own list of blocked apps in the panel.
     private func readFilterBlocklist() {
         enqueue {
+            if case .success(let limited) = await self.filter.limited() {
+                self.settings.adoptInternetLimited(limited)
+            }
             switch await self.filter.blocked() {
             case .success(let list):
                 self.settings.adoptLocalNetworkBlocked(list)
@@ -419,6 +422,73 @@ final class AccessModel: ObservableObject {
                 RunLoop.main.add(timer, forMode: .common)
             case .failure(let error):
                 text = "Couldn't allow Local Network for \(name): \(error.localizedDescription)"
+                isError = true
+            }
+            log.notice("\(text, privacy: .public)")
+            self.lastActivity = Activity(text: text, isError: isError)
+        }
+    }
+
+    // MARK: - The internet
+
+    /// Whether the filter is keeping an app to its model provider's hosts now.
+    func isInternetLimited(_ client: Client) -> Bool {
+        filter.isOn && client.bundleID.map(settings.internetLimited.contains) == true
+    }
+
+    /// The hosts an app keeps when it's limited: its developer's own and the ones
+    /// added in Settings.
+    func internetHosts(for client: Client) -> [String] {
+        let own = client.vendor.flatMap { InternetHosts.builtIn[$0] } ?? []
+        return Array(Set(own + settings.extraInternetHosts)).sorted()
+    }
+
+    /// The panel's choice between the whole internet and the app's model provider
+    /// only. Like the Local Network switch, lifting a limit only ever starts here.
+    func setInternetLimited(_ limit: Bool, for client: Client) {
+        guard let id = client.bundleID else { return }
+        let name = AppInfo.name(client)
+        let hosts = internetHosts(for: client)
+        enqueue {
+            let result = if limit { await self.filter.limitInternet([id], hosts: hosts) } else { await self.filter.unlimitInternet([id]) }
+            let text: String
+            var isError = false
+            switch result {
+            case .success(let list):
+                self.settings.adoptInternetLimited(list)
+                if !limit {
+                    text = "\(name) can reach the whole internet again"
+                } else if hosts.isEmpty {
+                    text = "Kept \(name) off the internet. Add its model's hosts in Settings to let those through"
+                } else {
+                    text = "Kept \(name) to \(hosts.formatted(.list(type: .and))) on the internet"
+                }
+            case .failure(let error):
+                text = "Couldn't \(limit ? "limit" : "stop limiting") the internet for \(name): \(error.localizedDescription)"
+                isError = true
+            }
+            log.notice("\(text, privacy: .public)")
+            self.lastActivity = Activity(text: text, isError: isError)
+        }
+    }
+
+    /// Gives limited apps the whole internet for a while, after the person said yes to
+    /// a request. The filter keeps the time and limits them again itself.
+    func allowInternet(_ ids: [String], minutes: Int, name: String) {
+        let duration = Settings.describe(minutes: minutes)
+        enqueue {
+            let text: String
+            var isError = false
+            switch await self.filter.allowInternet(ids, minutes: minutes) {
+            case .success(let list):
+                self.settings.adoptInternetLimited(list)
+                text = "Allowed the whole internet for \(name) for \(duration), as you said"
+                let timer = Timer(timeInterval: TimeInterval(minutes * 60) + 1, repeats: false) { _ in
+                    MainActor.assumeIsolated { self.readFilterBlocklist() }
+                }
+                RunLoop.main.add(timer, forMode: .common)
+            case .failure(let error):
+                text = "Couldn't allow the internet for \(name): \(error.localizedDescription)"
                 isError = true
             }
             log.notice("\(text, privacy: .public)")

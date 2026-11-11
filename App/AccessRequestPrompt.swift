@@ -58,32 +58,44 @@ final class AccessRequestPrompt {
 
     /// `isClaimed` is when the app is only the link's word for it, which the question says.
     private func ask(_ request: AccessRequest, apps: [String], isClaimed: Bool) {
-        let pane = request.pane
+        let what = request.what
         // A command's own app is the one the person knows: Claude, not the shell inside it.
         guard let app = apps.first(where: { settings.isWatched(.bundle($0)) }) ?? apps.first else {
-            log.notice("Ignored a request for \(pane.shortTitle, privacy: .public) from an unknown process")
-            model.note("Something asked for \(pane.title), but Revoke couldn't tell which app it was")
+            log.notice("Ignored a request for \(what.title, privacy: .public) from an unknown process")
+            model.note("Something asked for \(what.title), but Revoke couldn't tell which app it was")
             return
         }
         let name = AppInfo.name(.bundle(app))
-        let key = "\(app) \(pane)"
+        let key = "\(app) \(what)"
         if let last = declined[key], Date().timeIntervalSince(last) < Self.quietAfterNo {
-            log.notice("Ignored \(name, privacy: .public) asking for \(pane.shortTitle, privacy: .public) again so soon")
+            log.notice("Ignored \(name, privacy: .public) asking for \(what.title, privacy: .public) again so soon")
             return
         }
 
-        // Every app in the chain that the filter blocks has to be let through, since
-        // a block on any one of them stops the command.
-        let blocked = apps.filter(settings.localNetworkBlocked.contains)
-        if pane == .localNetwork {
-            guard model.filter.isOn, !blocked.isEmpty else {
+        // Every app in the chain that the filter holds back has to be let through,
+        // since a block on any one of them stops the command.
+        let held: [String]
+        switch what {
+        case .pane(.localNetwork):
+            held = apps.filter(settings.localNetworkBlocked.contains)
+            guard model.filter.isOn, !held.isEmpty else {
                 model.note("\(name) asked for Local Network, which Revoke isn't blocking")
                 return
             }
-        } else if model.snapshot.entries[.bundle(app)]?[pane]?.access == .allowed {
-            model.note("\(name) asked for \(pane.title), which it already has")
-            return
+        case .internet:
+            held = apps.filter(settings.internetLimited.contains)
+            guard model.filter.isOn, !held.isEmpty else {
+                model.note("\(name) asked for the whole internet, which Revoke isn't limiting")
+                return
+            }
+        case .pane(let pane):
+            held = []
+            if model.snapshot.entries[.bundle(app)]?[pane]?.access == .allowed {
+                model.note("\(name) asked for \(pane.title), which it already has")
+                return
+            }
         }
+        let isTimed = !held.isEmpty
 
         let duration = Settings.describe(minutes: request.minutes)
         let alert = NSAlert()
@@ -93,16 +105,18 @@ final class AccessRequestPrompt {
         }
         var warning: String
         let who = isClaimed ? "Something, saying it's \(name)," : name
-        if pane == .localNetwork {
-            alert.messageText = "\(who) is asking for \(pane.title) for \(duration):"
-            warning = "Say yes only if you're expecting this. Revoke blocks it again after \(duration). The reason is \(name)'s own words, not Revoke's."
+        if isTimed {
+            alert.messageText = "\(who) is asking for \(what.title) for \(duration):"
+            let after = what == .internet ? "keeps it to its model's hosts again" : "blocks it again"
+            warning = "Say yes only if you're expecting this. Revoke \(after) after \(duration). The reason is \(name)'s own words, not Revoke's."
         } else {
-            alert.messageText = "\(who) is asking for \(pane.title):"
+            alert.messageText = "\(who) is asking for \(what.title):"
             warning = "Say yes only if you're expecting this. Only you can switch it on, so Yes opens System Settings. The reason is \(name)'s own words, not Revoke's."
         }
         if isClaimed { warning += " Revoke couldn't tell which app sent this, so \(name) is only what the request says." }
         let reason = request.reason.map { Links.shown($0).text } ?? "It gave no reason."
-        alert.accessoryView = LinkPrompt.accessory(shown: reason, warning: warning, question: "Allow \(pane.title)?")
+        let question = what == .internet ? "Allow the whole internet?" : "Allow \(what.title)?"
+        alert.accessoryView = LinkPrompt.accessory(shown: reason, warning: warning, question: question)
         // No comes first, so it's the default and Return says no.
         alert.addButton(withTitle: "No")
         alert.addButton(withTitle: "Yes").keyEquivalent = ""
@@ -112,16 +126,21 @@ final class AccessRequestPrompt {
 
         guard alert.runModal() == .alertSecondButtonReturn else {
             declined[key] = Date()
-            log.notice("Turned down \(name, privacy: .public) asking for \(pane.shortTitle, privacy: .public)")
-            model.note("Turned down \(name) asking for \(pane.title)")
+            log.notice("Turned down \(name, privacy: .public) asking for \(what.title, privacy: .public)")
+            model.note("Turned down \(name) asking for \(what.title)")
             return
         }
-        log.notice("Said yes to \(name, privacy: .public) asking for \(pane.shortTitle, privacy: .public)")
-        if pane == .localNetwork {
-            model.allowLocalNetwork(blocked, minutes: request.minutes, name: name)
-        } else if let url = pane.settingsURL {
-            NSWorkspace.shared.open(url)
-            model.note("Opened System Settings for you to allow \(pane.title) for \(name)")
+        log.notice("Said yes to \(name, privacy: .public) asking for \(what.title, privacy: .public)")
+        switch what {
+        case .pane(.localNetwork):
+            model.allowLocalNetwork(held, minutes: request.minutes, name: name)
+        case .internet:
+            model.allowInternet(held, minutes: request.minutes, name: name)
+        case .pane(let pane):
+            if let url = pane.settingsURL {
+                NSWorkspace.shared.open(url)
+                model.note("Opened System Settings for you to allow \(pane.title) for \(name)")
+            }
         }
     }
 

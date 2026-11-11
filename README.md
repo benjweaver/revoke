@@ -193,6 +193,34 @@ editing Revoke's settings: only you can, by switching its Local Network back on 
 panel or saying yes when it asks (see below). Revoke's automatic revocations only ever
 add blocks.
 
+## Limiting the internet to an app's model
+
+An agent needs its model provider's servers to work at all, and for most jobs nothing
+else on the internet. Right-click a watched app in the panel and choose **Limit Internet
+to Its Model**: the filter then drops the app's connections to the internet, commands
+it starts included, except to its developer's own hosts and any you add in Settings.
+Its row says "Internet: its model only". The local network isn't part of this; it keeps
+its own switch.
+
+- **Built-in hosts** cover Anthropic (`anthropic.com`, `claude.ai`, `claude.com`),
+  OpenAI, Cursor, and DeepSeek, subdomains included. Other apps start with none, so
+  add their model's hosts in Settings first.
+- **Hosts you add** in Settings apply to every limited app, and take effect the next
+  time you limit one.
+- **What stops working** is everything else the app does online: web search, `git
+  push`, `npm install`, update checks, telemetry, and MCP servers that call out. The
+  app can ask for the whole internet for a while (see below).
+
+The filter goes by the host a connection names: the one macOS recorded for the address,
+and the server name a TLS connection asks for, which both have to be allowed. That
+stops an agent a web page talked into fetching or posting somewhere. It doesn't stop
+one built to lie: providers sit behind content networks that many sites share, and a
+connection that names an allowed host there can be answered by another site on the
+same network. Connections that name no host at all are dropped.
+
+While any app is limited, the filter looks at every new connection on the Mac to see
+whose it is, and lets everything from other apps straight through.
+
 ## Asking for access
 
 An agent that finds something blocked can ask you for it instead of working around the
@@ -205,7 +233,7 @@ open "revoke://request?access=local-network&minutes=15&reason=Reach%20the%20test
 Revoke shows which app is asking, for what, for how long, and the reason in the app's
 own words. No is the default, and nothing changes unless you say yes.
 
-- `access` is `local-network`, `device-control`, `screen-recording`,
+- `access` is `local-network`, `internet`, `device-control`, `screen-recording`,
   `input-monitoring`, or `full-disk-access`. Links and Running can't be asked for.
 - `minutes` is how long, from 1 to 240. Without it, 15.
 - `reason` is a line of text, at most 300 characters.
@@ -213,7 +241,8 @@ own words. No is the default, and nothing changes unless you say yes.
   The question then says the app is only what the request claims.
 
 For Local Network, yes lets the app through for that long, and then the filter blocks
-it again by itself, even if Revoke has quit by then. For the rest, only System Settings
+it again by itself, even if Revoke has quit by then. `internet` works the same way for
+an app limited to its model: the whole internet for that long, then the limit again. For the rest, only System Settings
 can grant access, so yes opens the right pane for you to switch it on.
 
 Revoke works out who's asking from the process that opened the link and the apps it

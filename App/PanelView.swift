@@ -190,6 +190,7 @@ struct PanelView: View {
         HStack(spacing: PanelLayout.columnSpacing) {
             label(row, caption: [
                 AppInfo.role(row.client),
+                model.isInternetLimited(row.client) ? "Internet: its model only" : nil,
                 row.deadline.map { "Revokes at \($0.formatted(date: .omitted, time: .shortened))" },
             ].compactMap { $0 }.joined(separator: " · ").nilIfEmpty)
             ForEach(Pane.allCases) { pane in
@@ -203,6 +204,16 @@ struct PanelView: View {
             if row.isRunning || model.isRunning(row.client) {
                 Button("Stop App") { model.stop(row.client) }
                     .disabled(model.isRevoking)
+                Divider()
+            }
+            if filter.isOn, row.client.bundleID != nil {
+                if model.isInternetLimited(row.client) {
+                    Button("Allow the Whole Internet") { model.setInternetLimited(false, for: row.client) }
+                        .disabled(model.isRevoking)
+                } else {
+                    Button("Limit Internet to Its Model") { model.setInternetLimited(true, for: row.client) }
+                        .disabled(model.isRevoking)
+                }
                 Divider()
             }
             if settings.isWatched(row.client) {

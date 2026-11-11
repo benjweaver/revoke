@@ -137,6 +137,25 @@ final class NetworkFilter: NSObject, ObservableObject {
         await call { $0.allow(identifiers, minutes: minutes, reply: $1) }
     }
 
+    /// The apps kept to their model provider's hosts on the internet at this moment.
+    func limited() async -> Result<[String], Failure> {
+        await call { $0.getLimited(reply: $1) }
+    }
+
+    /// Keeps apps to these hosts on the internet. Returns the apps limited afterward.
+    func limitInternet(_ identifiers: [String], hosts: [String]) async -> Result<[String], Failure> {
+        await call { $0.limitInternet(identifiers, hosts: hosts, reply: $1) }
+    }
+
+    func unlimitInternet(_ identifiers: [String]) async -> Result<[String], Failure> {
+        await call { $0.unlimitInternet(identifiers, reply: $1) }
+    }
+
+    /// Gives limited apps the whole internet for a while. The filter limits them again itself.
+    func allowInternet(_ identifiers: [String], minutes: Int) async -> Result<[String], Failure> {
+        await call { $0.allowInternet(identifiers, minutes: minutes, reply: $1) }
+    }
+
     /// Sends one request and waits for the filter's answer. When the connection was
     /// dropped, as when the extension restarts with the filter, it's made again and
     /// the request sent once more.

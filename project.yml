@@ -18,7 +18,7 @@ settings:
     CODE_SIGN_STYLE: Automatic
     ENABLE_HARDENED_RUNTIME: YES
     MARKETING_VERSION: "1.5.2"
-    CURRENT_PROJECT_VERSION: "17"
+    CURRENT_PROJECT_VERSION: "19"
 targets:
   Revoke:
     type: application
@@ -95,7 +95,7 @@ targets:
   RevokeTests:
     type: bundle.unit-test
     platform: macOS
-    sources: [Tests, App/AccessRequest.swift, App/Links.swift, App/Pane.swift, App/PanelLayout.swift, App/TCCDatabase.swift]
+    sources: [Tests, Shared/InternetHosts.swift, App/AccessRequest.swift, App/Links.swift, App/Pane.swift, App/PanelLayout.swift, App/TCCDatabase.swift]
     dependencies:
       - target: Revoke
         embed: false

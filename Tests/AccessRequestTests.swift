@@ -18,6 +18,13 @@ struct AccessRequestTests {
         #expect(request("revoke://request?access=accessibility")?.pane == .deviceControl)
     }
 
+    @Test func canAskForTheWholeInternet() {
+        let asked = request("revoke://request?access=internet&minutes=10&reason=Push%20the%20branch")
+        #expect(asked?.what == .internet)
+        #expect(asked?.pane == nil)
+        #expect(asked?.minutes == 10)
+    }
+
     @Test func keepsTheTimeWithinBounds() {
         #expect(request("revoke://request?access=local-network")?.minutes == AccessRequest.defaultMinutes)
         #expect(request("revoke://request?access=local-network&minutes=0")?.minutes == 1)
@@ -34,8 +41,8 @@ struct AccessRequestTests {
         #expect(request("revoke://request") == nil)
         #expect(request("revoke://grant?access=local-network") == nil)
         #expect(request("https://request?access=local-network") == nil)
-        #expect(!AccessRequest.names.values.contains(.links))
-        #expect(!AccessRequest.names.values.contains(.running))
+        #expect(!AccessRequest.names.values.contains(.pane(.links)))
+        #expect(!AccessRequest.names.values.contains(.pane(.running)))
     }
 
     @Test func theFirstOfARepeatedNameCounts() {

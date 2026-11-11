@@ -20,6 +20,17 @@ protocol FilterControl {
     /// blocks them again when the time is up, whether or not the app is still running.
     /// The app only asks this when the person says yes to an app's request.
     func allow(_ identifiers: [String], minutes: Int, reply: @escaping @Sendable ([String]) -> Void)
+
+    /// The apps kept to their model provider's hosts on the internet at this moment.
+    func getLimited(reply: @escaping @Sendable ([String]) -> Void)
+    /// Keeps apps to these hosts, and subdomains of them, on the internet. The local
+    /// network isn't touched: that's the list above.
+    func limitInternet(_ identifiers: [String], hosts: [String], reply: @escaping @Sendable ([String]) -> Void)
+    /// Gives apps the whole internet back. Like `unblock`, only on the person's say-so.
+    func unlimitInternet(_ identifiers: [String], reply: @escaping @Sendable ([String]) -> Void)
+    /// Gives limited apps the whole internet for a while. The filter brings the limit
+    /// back itself when the time is up.
+    func allowInternet(_ identifiers: [String], minutes: Int, reply: @escaping @Sendable ([String]) -> Void)
 }
 
 enum FilterIdentity {
