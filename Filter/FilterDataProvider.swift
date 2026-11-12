@@ -105,7 +105,10 @@ final class FilterDataProvider: NEFilterDataProvider, @unchecked Sendable {
         case .drop: return .drop()
         case .needsHello:
             // The hello came in pieces: look again when more of it is here.
-            guard offset == 0, readBytes.count < Self.helloLimit else { return .drop() }
+            guard offset == 0, readBytes.count < Self.helloLimit else {
+                log.notice("Dropped an internet connection whose start never named a host, from \(AppIdentity.identifiers(of: flow).sorted(), privacy: .public)")
+                return .drop()
+            }
             return NEFilterDataVerdict(passBytes: 0, peekBytes: readBytes.count + Self.helloBytes)
         }
     }

@@ -7,6 +7,9 @@ import AppKit
 if CommandLine.arguments.contains("--restore-links") {
     // Nothing below runs until the person confirms. The alert needs an app to show it.
     NSApplication.shared.setActivationPolicy(.accessory)
+    // Without this the question is drawn but never offered to accessibility, since the
+    // app never reaches its run loop: VoiceOver would find no window to read.
+    NSApp.finishLaunching()
     NSApp.activate()
     let alert = NSAlert()
     alert.alertStyle = .warning

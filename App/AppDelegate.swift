@@ -134,6 +134,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         AppInfo.forget()
         model.refresh()
         model.refreshRunning()
+        // The filter ends a timed allowance by itself, and Revoke may have been started
+        // again since it was given, so the switches show what the filter says now.
+        Task { await model.refreshFilterLists() }
         // Fit the screen whose menu bar was clicked: on one narrower than the panel,
         // macOS would otherwise cut off its right edge.
         let screenWidth = (button.window?.screen ?? NSScreen.main)?.visibleFrame.width ?? PanelLayout.preferredWidth
