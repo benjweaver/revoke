@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Releases the version in project.yml in one step: builds a notarised, universal
-# Revoke.app (see build.sh), publishes it as a GitHub release with its CHANGELOG.md
+# Revoke.app (see build.sh), tries to get around it in the macOS 27 VM
+# (Scripts/escape-test.sh), publishes it as a GitHub release with its CHANGELOG.md
 # section as the notes, points the Homebrew tap at it, and retakes the README screenshots
-# in the macOS 27 VM (Scripts/screenshots.sh). SKIP_SCREENSHOTS=1 skips the screenshots.
+# in the VM (Scripts/screenshots.sh). SKIP_ESCAPE_TEST=1 and SKIP_SCREENSHOTS=1 skip those.
 #   Scripts/release.sh
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -58,6 +59,16 @@ for binary in "$app/Contents/MacOS/Revoke" "$filter"; do
       { echo "error: $(basename "$binary") is missing $arch" >&2; exit 1; }
   done
 done
+# Try to get around the build, and to update to it from the last release, before
+# anyone else can install it (see Scripts/escape-test.sh). Nothing is published if it
+# fails. SKIP_ESCAPE_TEST=1 skips it, for when the VM isn't to hand.
+if [ "${SKIP_ESCAPE_TEST:-}" = 1 ]; then
+  echo "Skipping the escape test (SKIP_ESCAPE_TEST=1)."
+else
+  APP="$app" zsh Scripts/escape-test.sh ||
+    { echo "error: the escape test failed; nothing was published" >&2; exit 1; }
+fi
+
 out=build/release
 rm -rf "$out"; mkdir -p "$out"
 zip="$out/Revoke-$version.zip"

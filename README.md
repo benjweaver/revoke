@@ -363,11 +363,21 @@ Revoke is free. If it's useful, you can [support its development](https://benjwe
 Bump `MARKETING_VERSION` and `CURRENT_PROJECT_VERSION` in `project.yml` (macOS only
 replaces the network filter when its build number changes), add the version's section
 to `CHANGELOG.md`, then commit and push. `Scripts/release.sh` does the rest: it builds
-a universal app, signs it with the Developer ID, has Apple notarize it, publishes the
+a universal app, signs it with the Developer ID, has Apple notarize it, runs
+`Scripts/escape-test.sh` on it (below), publishes the
 zip as a GitHub release with that changelog section as the notes, and points the
 [Homebrew tap](https://github.com/benjweaver/homebrew-revoke) at it. Then it runs
 `Scripts/screenshots.sh`, which retakes the shots above from the new release in a macOS 27
 UTM VM and commits them; `SKIP_SCREENSHOTS=1` skips that step.
+
+`Scripts/escape-test.sh` tries to get around the build in the same VM before anything
+is published, and the release stops if it fails. It updates from the last release and
+checks the new filter answers Revoke, blocks a test app's Local Network and checks the
+app can't reach the network itself, through a command, or through a helper it hands to
+`launchd`, empties Revoke's saved list while Revoke is quit, limits the app's internet
+to one host and checks the rest is dropped, and asks for the internet for a minute and
+checks the limit returns. `SKIP_ESCAPE_TEST=1` skips it. It needs Revoke's filter allowed
+and on in the VM.
 
 Notarizing needs an App Store Connect API key, saved once in the keychain as the
 notarytool profile `notary`:
