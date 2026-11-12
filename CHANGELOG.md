@@ -5,6 +5,27 @@ All notable changes are listed here. The format follows
 [Semantic Versioning](https://semver.org/). Each release's notes on GitHub come
 from its section below.
 
+## [1.6.3] - 2026-11-11
+
+### Added
+
+- The escape test now also covers subnets the Mac is on outside the private ranges
+  (carrier-grade NAT and global IPv6), every service Revoke resets with `tccutil`, the
+  question Revoke asks before a link opens an app, `--restore-links`, and the time limit.
+- Cursor may reach `cursorapi.com` and `cursor-cdn.com` while its internet is limited.
+  Its own bundle names both.
+
+### Fixed
+
+- After a timed allowance ended, the panel could still show Local Network or Internet
+  as on if Revoke had been started again in between, though the filter was blocking.
+  The panel now asks the filter each time it opens.
+- The question `--restore-links` asks was drawn but never offered to accessibility, so
+  VoiceOver found no window to read. It's a window like any other now.
+- When the network filter needs allowing, the button in Settings opens the Network
+  Extensions list, where Revoke's switch is. It opened Login Items & Extensions and left
+  the list to find.
+
 ## [1.6.2] - 2026-11-11
 
 ### Added
@@ -257,6 +278,7 @@ from its section below.
   deleted or replaced.
 - Apps from Anthropic and OpenAI are watched by default.
 
+[1.6.3]: https://github.com/benjweaver/revoke/releases/tag/v1.6.3
 [1.6.2]: https://github.com/benjweaver/revoke/releases/tag/v1.6.2
 [1.6.1]: https://github.com/benjweaver/revoke/releases/tag/v1.6.1
 [1.6.0]: https://github.com/benjweaver/revoke/releases/tag/v1.6.0
