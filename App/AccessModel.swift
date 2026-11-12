@@ -74,6 +74,8 @@ final class AccessModel: ObservableObject {
     /// "Claude is running" rather than "Claude and Claude Helper are running".
     @Published private(set) var runningAppIDs = Set<String>()
 
+    /// Called when System Settings has been opened for the person to grant something.
+    var onGrantNeeded: ((Client, Pane) -> Void)?
     /// Access that's on only for now, as the filter last reported it.
     @Published private(set) var allowances = Allowances()
     /// The time the panel counts minutes from. It moves while something is on for now.
@@ -344,9 +346,24 @@ final class AccessModel: ObservableObject {
             }
         } else if !on, !pane.tccutilServices.isEmpty, client.bundleID != nil {
             revoke([client], panes: [pane], reason: nil)
+        } else if on {
+            openSettings(toGrant: pane, for: client)
         } else if let url = pane.settingsURL {
             NSWorkspace.shared.open(url)
         }
+    }
+
+    /// Opens System Settings at a pane for the person to give an app access, with the
+    /// app's icon alongside to drag into the list.
+    func openSettings(toGrant pane: Pane, for client: Client) {
+        guard let url = pane.settingsURL else { return }
+        NSWorkspace.shared.open(url)
+        onGrantNeeded?(client, pane)
+    }
+
+    /// Whether an app has this access now, as far as Revoke can read.
+    func isAllowed(_ pane: Pane, for client: Client) -> Bool {
+        snapshot.entries[client]?[pane]?.access == .allowed
     }
 
     /// A column switch in the Watched header row.

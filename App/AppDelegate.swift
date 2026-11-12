@@ -11,6 +11,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let requests: AccessRequestPrompt
     private var statusItem: NSStatusItem?
     private let popover = NSPopover()
+    private let grantHelper = GrantHelper()
     private var panel: NSHostingController<PanelView>?
     private var window: NSWindow?
     /// Watches for clicks in other apps while the panel is open.
@@ -56,6 +57,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         panel = hosting
         popover.behavior = .transient
         popover.delegate = self
+        model.onGrantNeeded = { [weak self] client, pane in
+            guard let self else { return }
+            // The panel would sit over System Settings and close at the first click there.
+            self.popover.performClose(nil)
+            self.grantHelper.show(for: client, pane: pane) { [weak self] in self?.model.isAllowed(pane, for: client) ?? false }
+        }
         NSApp.mainMenu = Self.makeMainMenu()
 
         // objectWillChange fires before the change lands, so look a turn later.
@@ -111,7 +118,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let what = settings.lockFollowsRunningOnly ? "is running" : "is running or has access"
         let symbol = !model.snapshot.canReadTCC ? "lock.trianglebadge.exclamationmark"
             : isOpen ? "lock.open.fill" : "lock.fill"
-        button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: model.statusText)
+        // VoiceOver says the app's name first, then what the lock is showing. The
+        // image's own description used to be the whole of it, and never said "Revoke".
+        button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)
+        button.setAccessibilityLabel("Revoke")
+        button.setAccessibilityValue(model.statusText)
+        button.setAccessibilityHelp("Opens Revoke's panel. Control-click for a menu.")
         button.toolTip = !model.snapshot.canReadTCC ? "Revoke: \(model.statusText)"
             : isOpen ? "Revoke: \(model.statusText). The lock stays open until no watched app \(what)."
             : "Revoke: \(model.statusText). No watched app \(what)."
@@ -147,6 +159,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         NSApp.activate()
         popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+        // VoiceOver and the keyboard go where the key window is. A popover shown while
+        // another app is in front doesn't always take it by itself.
+        popover.contentViewController?.view.window?.makeKey()
         // A transient popover only closes on outside clicks while Revoke is the
         // active app, and macOS may turn down the activation, so close it here too.
         // Global monitors see only other apps' events: clicks in the panel and on
@@ -188,7 +203,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if window == nil {
             let hosting = NSHostingController(rootView: SettingsView(settings: settings, model: model, filter: filter))
             let w = NSWindow(contentViewController: hosting)
-            w.title = "Revoke"
+            w.title = "Revoke Settings"
             w.styleMask = [.titled, .closable]
             w.isReleasedWhenClosed = false
             w.center()

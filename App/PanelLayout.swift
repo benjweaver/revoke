@@ -50,4 +50,16 @@ enum PanelLayout {
     static func width(forScreenWidth screenWidth: CGFloat) -> CGFloat {
         min(preferredWidth, max(minimumWidth, screenWidth - 2 * screenMargin))
     }
+
+    /// Where the drag-to-grant helper, of this size, goes by a window on a screen: the first of below,
+    /// right, and left that fits, else over the window's bottom edge.
+    static func helperOrigin(for size: CGSize, by window: CGRect, on screen: CGRect) -> CGPoint {
+        let gap: CGFloat = 8
+        let centeredX = min(max(window.midX - size.width / 2, screen.minX + gap), screen.maxX - size.width - gap)
+        let alignedY = min(max(window.minY, screen.minY + gap), screen.maxY - size.height - gap)
+        if window.minY - size.height - gap >= screen.minY { return CGPoint(x: centeredX, y: window.minY - size.height - gap) }
+        if window.maxX + gap + size.width <= screen.maxX { return CGPoint(x: window.maxX + gap, y: alignedY) }
+        if window.minX - gap - size.width >= screen.minX { return CGPoint(x: window.minX - gap - size.width, y: alignedY) }
+        return CGPoint(x: centeredX, y: max(window.minY + 12, screen.minY + gap))
+    }
 }

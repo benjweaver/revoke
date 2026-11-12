@@ -235,7 +235,7 @@ struct PanelView: View {
 
     private func columnTitle(symbol: String, title: String, tip: String) -> some View {
         VStack(spacing: 3) {
-            Image(systemName: symbol)
+            Image(systemName: symbol).accessibilityHidden(true)
             Text(title).font(.caption2).lineLimit(2).multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -363,6 +363,8 @@ struct PanelView: View {
             }
         }
         .padding(.vertical, 5)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("All watched apps")
         // The shading reaches a little past the row without moving its columns.
         .background(RoundedRectangle(cornerRadius: 8).fill(.quaternary.opacity(0.5)).padding(.horizontal, -6))
     }
@@ -392,6 +394,10 @@ struct PanelView: View {
             rowAllAccessCell(row).frame(width: PanelLayout.columnWidth)
         }
         .contentShape(Rectangle())
+        // One group per app, so VoiceOver says whose switches these are on the way in
+        // and can step over an app in one move.
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(row.name)
         .contextMenu {
             // For an app, or a helper it left behind, running with no window to close.
             if row.isRunning || model.isRunning(row.client) {
@@ -427,6 +433,7 @@ struct PanelView: View {
             Image(nsImage: row.icon)
                 .resizable()
                 .frame(width: 20, height: 20)
+                .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 0) {
                 Text(row.name).lineLimit(1).truncationMode(.middle)
                     .tip("\(row.name) (\(row.client.key))")

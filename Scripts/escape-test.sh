@@ -108,12 +108,19 @@ cleanup() {
 	# Revoke running and the test app still there.
 	guest '(nohup open /Applications/Revoke.app >/dev/null 2>&1 &)' >/dev/null 2>&1 || true
 	sleep 6
-	if panel_open 2>/dev/null; then
-		[[ $(listed localNetworkBlocked) == yes ]] && click_header local-network || true
-		[[ $(listed internetLimited) == yes ]] && click_header internet || true
-		[[ $(listed linksBlocked) == yes ]] && click_header links || true
-		mac key esc >/dev/null 2>&1 || true
-	fi
+	# A switch that's on for only some apps goes off at the first click and on at the
+	# second, and a click can miss, so each list gets a few tries.
+	local pair try
+	for pair in localNetworkBlocked:local-network internetLimited:internet linksBlocked:links; do
+		for try in 1 2 3; do
+			[[ $(listed ${pair%%:*}) == yes ]] || break
+			allow_local_network_question
+			panel_open 2>/dev/null && click_header ${pair##*:} || true
+			guest "osascript -e 'tell application \"System Settings\" to quit'" >/dev/null 2>&1 || true
+		done
+		[[ $(listed ${pair%%:*}) == yes ]] && print "  couldn't lift ${pair##*:} for the test app; lift it in Revoke's panel in the VM"
+	done
+	mac key esc >/dev/null 2>&1 || true
 	guest "osascript -e 'tell application \"System Settings\" to quit'" >/dev/null 2>&1 || true
 	mac quit Revoke >/dev/null 2>&1 || true
 	sleep 1

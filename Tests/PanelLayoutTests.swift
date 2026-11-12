@@ -63,6 +63,28 @@ struct PanelLayoutTests {
         #expect(PanelLayout.maxHeight(forScreenHeight: 100) == 240)
     }
 
+    @Test func theGrantHelperKeepsOffSystemSettingsWhenItCan() {
+        let size = CGSize(width: 440, height: 200)
+        let screen = CGRect(x: 0, y: 0, width: 1440, height: 870)
+        // Room below: centered under the window.
+        var window = CGRect(x: 300, y: 300, width: 720, height: 500)
+        var origin = PanelLayout.helperOrigin(for: size, by: window, on: screen)
+        #expect(origin == CGPoint(x: 440, y: 92))
+        // None below, room to the right.
+        window = CGRect(x: 100, y: 60, width: 720, height: 760)
+        origin = PanelLayout.helperOrigin(for: size, by: window, on: screen)
+        #expect(origin.x == window.maxX + 8 && !CGRect(origin: origin, size: size).intersects(window))
+        // Only to the left.
+        window = CGRect(x: 700, y: 60, width: 720, height: 760)
+        origin = PanelLayout.helperOrigin(for: size, by: window, on: screen)
+        #expect(origin.x == window.minX - 8 - size.width && !CGRect(origin: origin, size: size).intersects(window))
+        // Nowhere, as on a small screen: over the window's bottom edge, on screen.
+        let small = CGRect(x: 0, y: 0, width: 920, height: 550)
+        window = CGRect(x: 93, y: 10, width: 740, height: 520)
+        origin = PanelLayout.helperOrigin(for: size, by: window, on: small)
+        #expect(small.contains(CGRect(origin: origin, size: size)))
+    }
+
     @Test func neverNarrowerThanItsColumns() {
         #expect(PanelLayout.width(forScreenWidth: 320) == PanelLayout.minimumWidth)
         let columns = CGFloat(PanelLayout.columnCount) * (PanelLayout.columnWidth + PanelLayout.columnSpacing)

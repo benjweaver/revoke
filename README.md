@@ -259,6 +259,11 @@ it again by itself, even if Revoke has quit by then. `internet` works the same w
 an app limited to its model: the whole internet for that long, then the limit again. For the rest, only System Settings
 can grant access, so yes opens the right pane for you to switch it on.
 
+Switching one of those on in the panel does the same, and either way a small window
+appears by System Settings with the app's icon in it. Revoking took the app off the
+list, so drag the icon onto the list and macOS adds it, switched on, after asking for
+your password or Touch ID.
+
 While access is on for now, the panel says so: the switch shows a clock and the time
 left in place of its knob, the app's row says when it ends, and a strip at the top
 lists everything that's on for now. **End Now** there, or switching the switch off,

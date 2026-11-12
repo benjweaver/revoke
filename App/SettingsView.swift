@@ -86,7 +86,7 @@ struct SettingsView: View {
                     Toggle(isOn: Binding(get: { settings.isWatched(client) },
                                          set: { settings.setWatched(client, $0) })) {
                         HStack(spacing: 8) {
-                            Image(nsImage: AppInfo.icon(client)).resizable().frame(width: 18, height: 18)
+                            Image(nsImage: AppInfo.icon(client)).resizable().frame(width: 18, height: 18).accessibilityHidden(true)
                             VStack(alignment: .leading, spacing: 0) {
                                 Text(AppInfo.name(client))
                                 if let role = AppInfo.role(client) {
@@ -110,7 +110,7 @@ struct SettingsView: View {
                 Section {
                     ForEach(settings.hiddenClients.sorted { AppInfo.name($0).localizedStandardCompare(AppInfo.name($1)) == .orderedAscending }, id: \.self) { client in
                         HStack(spacing: 8) {
-                            Image(nsImage: AppInfo.icon(client)).resizable().frame(width: 18, height: 18)
+                            Image(nsImage: AppInfo.icon(client)).resizable().frame(width: 18, height: 18).accessibilityHidden(true)
                             Text(AppInfo.name(client))
                             Spacer()
                             Button("Show") { settings.setHidden(client, false) }
