@@ -18,7 +18,7 @@ settings:
     CODE_SIGN_STYLE: Automatic
     ENABLE_HARDENED_RUNTIME: YES
     MARKETING_VERSION: "1.5.2"
-    CURRENT_PROJECT_VERSION: "17"
+    CURRENT_PROJECT_VERSION: "20"
 targets:
   Revoke:
     type: application
@@ -43,6 +43,11 @@ targets:
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         LSUIElement: true
+        # revoke://request links, which apps open to ask the person for access.
+        CFBundleURLTypes:
+          - CFBundleURLName: dev.benjweaver.Revoke.request
+            CFBundleTypeRole: Viewer
+            CFBundleURLSchemes: [revoke]
         LSApplicationCategoryType: public.app-category.utilities
         NSHumanReadableCopyright: "GPL-3.0-or-later"
     scheme:
@@ -90,7 +95,7 @@ targets:
   RevokeTests:
     type: bundle.unit-test
     platform: macOS
-    sources: [Tests, App/Links.swift, App/Pane.swift, App/PanelLayout.swift, App/TCCDatabase.swift]
+    sources: [Tests, Shared/InternetHosts.swift, App/AccessRequest.swift, App/Links.swift, App/Pane.swift, App/PanelLayout.swift, App/TCCDatabase.swift]
     dependencies:
       - target: Revoke
         embed: false

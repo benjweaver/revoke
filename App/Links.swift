@@ -156,31 +156,80 @@ enum Links {
         return spaced.removingPercentEncoding ?? spaced
     }
 
-    /// Text safe to show: characters that reorder or hide text (right-to-left
-    /// overrides, zero-width spaces, controls) are shown as \uXXXX escapes, so a link
-    /// can't make itself look like something else, and very long text is cut.
-    nonisolated static func shown(_ text: String, limit: Int = 1500) -> String {
-        var shown = ""
-        let scalars = Array(text.unicodeScalars)
-        for (index, scalar) in scalars.enumerated() {
-            if index == limit {
-                shown += "… (\(scalars.count - limit) more characters)"
-                break
-            }
-            if isHidden(scalar) {
-                shown += String(format: "\\u%04X", scalar.value)
-            } else {
-                shown.unicodeScalars.append(scalar)
-            }
+    /// Link text ready to show, and how much of it couldn't be.
+    struct Shown: Equatable {
+        var text: String
+        /// Characters past `Links.hardLimit`, which are left out.
+        var omitted = 0
+
+        /// Whether the link is long enough that the person may not read to the end of it
+        /// without scrolling.
+        var isLong: Bool {
+            text.unicodeScalars.count > Links.longLink || text.reduce(0) { $1 == "\n" ? $0 + 1 : $0 } > 10
         }
-        return shown
     }
 
+    /// Past this many characters the dialog tells the person to scroll through the link.
+    nonisolated static let longLink = 600
+    /// Only a link of many megabytes is ever cut, because the text view can't lay it out.
+    nonisolated static let hardLimit = 200_000
+
+    /// Text safe to show, whole: characters that reorder or hide text (right-to-left
+    /// overrides, zero-width and tag characters, controls) are shown as \uXXXX escapes, so
+    /// a link can't make itself look like something else. Runs of blank lines and of
+    /// spaces are shortened, so whitespace can't push text out of view. Only a link past
+    /// `hardLimit` characters is cut, and `omitted` then says how much.
+    nonisolated static func shown(_ text: String, limit: Int = hardLimit) -> Shown {
+        var escaped = ""
+        var omitted = 0
+        var count = 0
+        for scalar in text.unicodeScalars {
+            if count == limit {
+                omitted = text.unicodeScalars.count - limit
+                break
+            }
+            count += 1
+            if isHidden(scalar) {
+                // Past U+FFFF the digits go in braces, so they can't run into text after them.
+                escaped += scalar.value > 0xFFFF ? "\\u{\(String(scalar.value, radix: 16, uppercase: true))}"
+                                                 : String(format: "\\u%04X", scalar.value)
+            } else {
+                escaped.unicodeScalars.append(scalar)
+            }
+        }
+        return Shown(text: squeezed(escaped), omitted: omitted)
+    }
+
+    /// Three or more newlines in a row (with only spaces between) become one blank line,
+    /// and a run of more than 20 spaces is named instead of shown.
+    nonisolated private static func squeezed(_ text: String) -> String {
+        var result = text
+        if let blank = try? NSRegularExpression(pattern: "(?:[^\\S\\n]*\\n){3,}") {
+            result = blank.stringByReplacingMatches(in: result, range: NSRange(result.startIndex..., in: result),
+                                                    withTemplate: "\n\n")
+        }
+        if let spaces = try? NSRegularExpression(pattern: "[^\\S\\n]{21,}") {
+            for match in spaces.matches(in: result, range: NSRange(result.startIndex..., in: result)).reversed() {
+                guard let range = Range(match.range, in: result) else { continue }
+                result.replaceSubrange(range, with: " [\(result[range].unicodeScalars.count) spaces] ")
+            }
+        }
+        return result
+    }
+
+    /// Whether a character is invisible, or changes how the text around it looks: it
+    /// shows as an escape instead. Tab and newline are the only ones left as they are.
     nonisolated private static func isHidden(_ scalar: Unicode.Scalar) -> Bool {
         switch scalar.value {
         case 0x0A, 0x09: return false
-        case 0x200B...0x200F, 0x202A...0x202E, 0x2066...0x2069, 0xFEFF: return true
-        default: return scalar.properties.generalCategory == .control
+        // Variation selectors and the Hangul fillers, which draw as nothing.
+        case 0xFE00...0xFE0F, 0xE0100...0xE01EF, 0x115F, 0x1160, 0x3164, 0xFFA0: return true
+        default: break
+        }
+        if scalar.properties.isDefaultIgnorableCodePoint { return true }
+        switch scalar.properties.generalCategory {
+        case .control, .format, .privateUse, .surrogate, .unassigned, .lineSeparator, .paragraphSeparator: return true
+        default: return false
         }
     }
 }

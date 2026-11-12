@@ -8,7 +8,7 @@ enum Revoker {
     private static let tccutil = "/usr/bin/tccutil"
     private static let lsregister = "/System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/LaunchServices.framework/Versions/A/Support/lsregister"
 
-    /// Resets each service for one app. Returns nil on success, or why it failed.
+    /// Resets each service for one app. Returns nil on success, or why the first reset failed.
     ///
     /// tccutil only takes bundle IDs that Launch Services can find, so on its own it
     /// can't touch what a deleted or replaced app left behind. For those, Revoke
@@ -39,11 +39,14 @@ enum Revoker {
     }
 
     private static func reset(_ services: [String], _ bundleID: String) async -> String? {
+        // A failed service doesn't stop the rest: each one still left set would keep the
+        // app's access. The first failure is the one reported.
+        var firstFailure: String?
         for service in services {
             let (status, errors) = await run(tccutil, ["reset", service, bundleID])
-            if status != 0 { return describe(errors) }
+            if status != 0, firstFailure == nil { firstFailure = describe(errors) }
         }
-        return nil
+        return firstFailure
     }
 
     private static func standInRoot() throws -> URL {

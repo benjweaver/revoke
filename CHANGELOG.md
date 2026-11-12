@@ -5,6 +5,46 @@ All notable changes are listed here. The format follows
 [Semantic Versioning](https://semver.org/). Each release's notes on GitHub come
 from its section below.
 
+## [Unreleased]
+
+### Added
+
+- Apps can ask for access with `Revoke --request` or a `revoke://request` link. Revoke shows who's asking, for
+  what, and why, and nothing changes unless you say yes. Local Network is allowed for
+  the time asked and then blocked again by the filter itself; for the privacy lists, yes
+  opens System Settings.
+- An **Internet** column. Switched off, it keeps the app and the commands it starts to
+  its developer's own hosts on the internet, plus any you add in Settings. The local network keeps its own switch. A limited app can ask for
+  the whole internet for a while with `revoke://request?access=internet`.
+
+### Changed
+
+- The time limit also resets Other access and blocks Local Network for watched apps
+  that have been running that long, since Revoke can't see when those were granted.
+- Device Control also covers posting synthetic clicks and keys (PostEvent), and Other
+  also resets other apps' data, system administration files, developer tools,
+  Bluetooth, speech recognition, and remote desktop.
+- `Revoke --restore-links` asks before giving the links back.
+
+### Fixed
+
+- A blocked app could lift its own Local Network block by editing Revoke's settings
+  while Revoke was quit. The filter's own list, saved as root, is now the one that counts.
+- The link prompt shows the whole link. It used to cut it at 1,500 characters and open
+  the rest unseen. Invisible characters, such as Unicode tag characters, show as escapes.
+- A long link in the prompt starts at its first line, with a scroller that stays in
+  view. It used to open partway down, hiding the start.
+- The filter also covers devices on your network with addresses outside the private
+  ranges, such as global IPv6 addresses, and helpers a blocked app starts and leaves
+  behind.
+- The panel says so when the filter didn't take a change, and follows the filter being
+  switched off in System Settings.
+- After an update, the new filter could start unable to hear Revoke, because the one
+  it replaced still held their shared service name. It kept blocking, but its list
+  couldn't be read or changed until the Mac restarted. Revoke now starts the filter
+  again when that happens.
+- One failed reset no longer stops the rest of an app's access from being revoked, and a
+  time limit that can't revoke something waits before trying again.
 ## [1.5.2] - 2026-10-24
 
 ### Added

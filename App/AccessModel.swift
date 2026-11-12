@@ -16,6 +16,8 @@ struct Row: Identifiable {
     /// Revoke's network filter is keeping the app off the local network, whatever
     /// macOS's own Local Network switch says.
     let isBlockedFromLocalNetwork: Bool
+    /// Revoke's network filter is keeping the app to its model provider's hosts.
+    let isInternetLimited: Bool
     /// The app, its helpers, or something they started is running.
     let isRunning: Bool
 
@@ -24,6 +26,8 @@ struct Row: Identifiable {
     func isAllowed(_ pane: Pane) -> Bool {
         if pane == .running { return isRunning }
         if pane == .localNetwork && isBlockedFromLocalNetwork { return false }
+        // The whole internet is what an app has unless Revoke limits it.
+        if pane == .internet { return !isInternetLimited }
         return entries[pane]?.access == .allowed
     }
 
@@ -57,6 +61,13 @@ final class AccessModel: ObservableObject {
     let filter: NetworkFilter
     private var notifyToken = NOTIFY_TOKEN_INVALID
     private var deadlineTimer: Timer?
+    /// When Revoke first saw each app running, by bundle ID, since the time limit last
+    /// reset what Revoke can't see. Kept in memory only.
+    private var seenRunning: [String: Date] = [:]
+    /// Apps whose last time-limit revocation left something past due, by bundle ID,
+    /// and when to try them again.
+    private var limitRetry: [String: Date] = [:]
+    private static let limitRetryDelay: TimeInterval = 5 * 60
     /// Revocations run one at a time, in the order they were asked for.
     private var queue: Task<Void, Never>?
     private var pending = 0
@@ -73,8 +84,9 @@ final class AccessModel: ObservableObject {
     init(settings: Settings, filter: NetworkFilter) {
         self.settings = settings
         self.filter = filter
-        // Whenever the filter (re)starts, it gets the whole list again.
-        filter.onReady = { [weak self] in self?.sendBlocklist() }
+        // Whenever the filter switches on, the panel shows the filter's own list. It's
+        // never sent back, so a list edited in Revoke's settings can't lift a block.
+        filter.onReady = { [weak self] in self?.readFilterBlocklist() }
         // tccd posts this whenever any app's access changes, in either database.
         notify_register_dispatch("com.apple.tcc.access.changed", &notifyToken, .main) { [weak self] _ in
             MainActor.assumeIsolated { self?.refresh() }
@@ -88,6 +100,7 @@ final class AccessModel: ObservableObject {
                 let appIDs = Set(apps.compactMap { Self.containingAppID($0) ?? $0.bundleIdentifier })
                 if ids != self?.runningIDs { self?.runningIDs = ids }
                 if appIDs != self?.runningAppIDs { self?.runningAppIDs = appIDs }
+                self?.noteRunning(appIDs)
             }
         // Apps make themselves their links' handler again (ChatGPT each time it starts,
         // Claude Code daily), so look every couple of seconds while Revoke stands in.
@@ -127,6 +140,7 @@ final class AccessModel: ObservableObject {
     func refreshRunning() {
         let stoppable = Set(Processes.pids(of: watchedBundleIDs).keys)
         if stoppable != stoppableIDs { stoppableIDs = stoppable }
+        noteRunning(stoppable)
     }
 
     /// Each app's links: the ones other apps can open it with, and the ones Revoke
@@ -224,6 +238,7 @@ final class AccessModel: ObservableObject {
             Row(client: client, name: AppInfo.name(client), icon: AppInfo.icon(client),
                 entries: entries, deadline: deadline(for: entries),
                 isBlockedFromLocalNetwork: isBlockedFromLocalNetwork(client),
+                isInternetLimited: isInternetLimited(client),
                 isRunning: client.bundleID.map { runningAppIDs.contains($0) || stoppableIDs.contains($0) } ?? false)
         }
         .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
@@ -291,23 +306,16 @@ final class AccessModel: ObservableObject {
     func set(_ pane: Pane, on: Bool, for client: Client) {
         if pane == .running {
             if on { open(client) } else { stop(client) }
+        } else if pane == .internet {
+            setInternetLimited(!on, for: client)
         } else if pane == .links {
             if on { giveLinksBack([client]) } else { revoke([client], panes: [.links], reason: nil) }
         } else if pane == .localNetwork, filter.isOn, let id = client.bundleID {
-            let name = AppInfo.name(client)
-            if on {
-                settings.allowLocalNetwork(id)
-                lastActivity = Activity(text: "Stopped blocking Local Network for \(name)", isError: false)
-                // macOS's own switch has to be on too.
-                if snapshot.entries[client]?[.localNetwork]?.access != .allowed, let url = pane.settingsURL {
-                    NSWorkspace.shared.open(url)
-                }
-            } else {
-                settings.blockLocalNetwork([id])
-                lastActivity = Activity(text: "Blocked Local Network for \(name)", isError: false)
+            setLocalNetworkBlocked(!on, for: [id])
+            // macOS's own switch has to be on too.
+            if on, snapshot.entries[client]?[.localNetwork]?.access != .allowed, let url = pane.settingsURL {
+                NSWorkspace.shared.open(url)
             }
-            log.notice("\(self.lastActivity?.text ?? "", privacy: .public)")
-            sendBlocklist()
         } else if !on, !pane.tccutilServices.isEmpty, client.bundleID != nil {
             revoke([client], panes: [pane], reason: nil)
         } else if let url = pane.settingsURL {
@@ -319,6 +327,12 @@ final class AccessModel: ObservableObject {
     func set(_ pane: Pane, on: Bool, forWatched rows: [Row]) {
         if pane == .running {
             if !on { stopAll() }
+        } else if pane == .internet {
+            // On gives the whole internet back to those that are limited; off limits
+            // every watched app, each to its own developer's hosts.
+            for row in rows where row.client.bundleID != nil && row.isInternetLimited == on {
+                setInternetLimited(!on, for: row.client)
+            }
         } else if pane == .links {
             if on {
                 let blocked = rows.map(\.client).filter {
@@ -334,15 +348,7 @@ final class AccessModel: ObservableObject {
             let ids = clients.compactMap(\.bundleID)
             if on {
                 let unblocked = ids.filter(settings.localNetworkBlocked.contains)
-                for id in unblocked { settings.allowLocalNetwork(id) }
-                if !unblocked.isEmpty {
-                    let names = unblocked.map { AppInfo.name(.bundle($0)) }.sorted()
-                    lastActivity = Activity(
-                        text: "Stopped blocking Local Network for \(names.formatted(.list(type: .and)))",
-                        isError: false)
-                    log.notice("\(self.lastActivity?.text ?? "", privacy: .public)")
-                    sendBlocklist()
-                }
+                if !unblocked.isEmpty { setLocalNetworkBlocked(false, for: unblocked) }
                 if !clients.contains(where: { snapshot.entries[$0]?[.localNetwork]?.access == .allowed }),
                    let url = pane.settingsURL {
                     NSWorkspace.shared.open(url)
@@ -372,8 +378,135 @@ final class AccessModel: ObservableObject {
         revoke(clients ?? leftoverRows.map(\.client), panes: Pane.allCases.filter { $0.tccService != nil } + [.other], reason: nil)
     }
 
-    private func sendBlocklist() {
-        filter.send(blocked: settings.localNetworkBlocked.sorted())
+    /// Shows the network filter's own list of blocked apps in the panel.
+    private func readFilterBlocklist() {
+        enqueue {
+            if case .success(let limited) = await self.filter.limited() {
+                self.settings.adoptInternetLimited(limited)
+            }
+            switch await self.filter.blocked() {
+            case .success(let list):
+                self.settings.adoptLocalNetworkBlocked(list)
+            case .failure(let error):
+                let text = "Couldn't read which apps the network filter blocks: \(error.localizedDescription)"
+                log.error("\(text, privacy: .public)")
+                self.lastActivity = Activity(text: text, isError: true)
+            }
+        }
+    }
+
+    /// A Local Network switch in the panel, sent to the network filter. This is the
+    /// only way Revoke lifts a block: automatic revocations only add them.
+    private func setLocalNetworkBlocked(_ block: Bool, for ids: [String]) {
+        let names = ids.map { AppInfo.name(.bundle($0)) }.sorted().formatted(.list(type: .and))
+        enqueue {
+            let result = if block { await self.filter.block(ids) } else { await self.filter.unblock(ids) }
+            let text: String
+            var isError = false
+            switch result {
+            case .success(let list):
+                self.settings.adoptLocalNetworkBlocked(list)
+                text = block ? "Blocked Local Network for \(names)" : "Stopped blocking Local Network for \(names)"
+            case .failure(let error):
+                text = "Couldn't \(block ? "block" : "stop blocking") Local Network for \(names): \(error.localizedDescription)"
+                isError = true
+            }
+            log.notice("\(text, privacy: .public)")
+            self.lastActivity = Activity(text: text, isError: isError)
+        }
+    }
+
+    /// Lets blocked apps reach the local network for a while, after the person said yes
+    /// to a request. The filter keeps the time and blocks them again itself, so the
+    /// block comes back even if Revoke has quit; the timer here only brings the panel
+    /// up to date.
+    func allowLocalNetwork(_ ids: [String], minutes: Int, name: String) {
+        let duration = Settings.describe(minutes: minutes)
+        enqueue {
+            let text: String
+            var isError = false
+            switch await self.filter.allow(ids, minutes: minutes) {
+            case .success(let list):
+                self.settings.adoptLocalNetworkBlocked(list)
+                text = "Allowed Local Network for \(name) for \(duration), as you said"
+                let timer = Timer(timeInterval: TimeInterval(minutes * 60) + 1, repeats: false) { _ in
+                    MainActor.assumeIsolated { self.readFilterBlocklist() }
+                }
+                RunLoop.main.add(timer, forMode: .common)
+            case .failure(let error):
+                text = "Couldn't allow Local Network for \(name): \(error.localizedDescription)"
+                isError = true
+            }
+            log.notice("\(text, privacy: .public)")
+            self.lastActivity = Activity(text: text, isError: isError)
+        }
+    }
+
+    // MARK: - The internet
+
+    /// Whether the filter is keeping an app to its model provider's hosts now.
+    func isInternetLimited(_ client: Client) -> Bool {
+        filter.isOn && client.bundleID.map(settings.internetLimited.contains) == true
+    }
+
+    /// The hosts an app keeps when it's limited: its developer's own and the ones
+    /// added in Settings.
+    func internetHosts(for client: Client) -> [String] {
+        let own = client.vendor.flatMap { InternetHosts.builtIn[$0] } ?? []
+        return Array(Set(own + settings.extraInternetHosts)).sorted()
+    }
+
+    /// The panel's choice between the whole internet and the app's model provider
+    /// only. Like the Local Network switch, lifting a limit only ever starts here.
+    func setInternetLimited(_ limit: Bool, for client: Client) {
+        guard let id = client.bundleID else { return }
+        let name = AppInfo.name(client)
+        let hosts = internetHosts(for: client)
+        enqueue {
+            let result = if limit { await self.filter.limitInternet([id], hosts: hosts) } else { await self.filter.unlimitInternet([id]) }
+            let text: String
+            var isError = false
+            switch result {
+            case .success(let list):
+                self.settings.adoptInternetLimited(list)
+                if !limit {
+                    text = "\(name) can reach the whole internet again"
+                } else if hosts.isEmpty {
+                    text = "Kept \(name) off the internet. Add its model's hosts in Settings to let those through"
+                } else {
+                    text = "Kept \(name) to \(hosts.formatted(.list(type: .and))) on the internet"
+                }
+            case .failure(let error):
+                text = "Couldn't \(limit ? "limit" : "stop limiting") the internet for \(name): \(error.localizedDescription)"
+                isError = true
+            }
+            log.notice("\(text, privacy: .public)")
+            self.lastActivity = Activity(text: text, isError: isError)
+        }
+    }
+
+    /// Gives limited apps the whole internet for a while, after the person said yes to
+    /// a request. The filter keeps the time and limits them again itself.
+    func allowInternet(_ ids: [String], minutes: Int, name: String) {
+        let duration = Settings.describe(minutes: minutes)
+        enqueue {
+            let text: String
+            var isError = false
+            switch await self.filter.allowInternet(ids, minutes: minutes) {
+            case .success(let list):
+                self.settings.adoptInternetLimited(list)
+                text = "Allowed the whole internet for \(name) for \(duration), as you said"
+                let timer = Timer(timeInterval: TimeInterval(minutes * 60) + 1, repeats: false) { _ in
+                    MainActor.assumeIsolated { self.readFilterBlocklist() }
+                }
+                RunLoop.main.add(timer, forMode: .common)
+            case .failure(let error):
+                text = "Couldn't allow the internet for \(name): \(error.localizedDescription)"
+                isError = true
+            }
+            log.notice("\(text, privacy: .public)")
+            self.lastActivity = Activity(text: text, isError: isError)
+        }
     }
 
     /// `reason` finishes "Revoked access for … when …"; nil means the person asked.
@@ -402,12 +535,20 @@ final class AccessModel: ObservableObject {
     private func perform(ids: [String], panes: [Pane], reason: String?) async {
         refresh()
         let before = snapshot
-        // Local Network is the network filter's block, for installed apps.
+        // Local Network is the network filter's block, for installed apps. Every one
+        // is sent, blocked already or not, since the panel's copy of the list may be stale.
         var newlyBlocked: Set<String> = []
-        if panes.contains(.localNetwork), filter.isOn {
-            newlyBlocked = Set(ids.filter { !isMissing(.bundle($0)) }).subtracting(settings.localNetworkBlocked)
-            settings.blockLocalNetwork(newlyBlocked)
-            sendBlocklist()
+        var filterFailure: String?
+        let installed = ids.filter { !isMissing(.bundle($0)) }
+        if panes.contains(.localNetwork), filter.isOn, !installed.isEmpty {
+            let wasBlocked = settings.localNetworkBlocked
+            switch await filter.block(installed) {
+            case .success(let list):
+                settings.adoptLocalNetworkBlocked(list)
+                newlyBlocked = Set(installed).intersection(list).subtracting(wasBlocked)
+            case .failure(let error):
+                filterFailure = error.localizedDescription
+            }
         }
         var failures: [String: String] = [:]
         // Links. Automatic runs leave file types be: macOS asks the person to confirm
@@ -462,6 +603,8 @@ final class AccessModel: ObservableObject {
         var text: String
         if let failure = failures.min(by: { $0.key < $1.key }) {
             text = "Couldn't revoke \(what) for \(failure.key): \(failure.value)"
+        } else if let filterFailure {
+            text = "Couldn't block Local Network: \(filterFailure)"
         } else if !before.canReadTCC {
             text = "Revoked \(what) for watched apps"
         } else if changes.isEmpty {
@@ -474,7 +617,7 @@ final class AccessModel: ObservableObject {
         }
         if let reason { text += " when \(reason)" }
         log.notice("\(text, privacy: .public)")
-        lastActivity = Activity(text: text, isError: !failures.isEmpty)
+        lastActivity = Activity(text: text, isError: !failures.isEmpty || filterFailure != nil)
     }
 
     /// Resets access Revoke can't see, like Automation or the microphone, so the app
@@ -698,22 +841,59 @@ final class AccessModel: ObservableObject {
         return max(since, settings.limitStart).addingTimeInterval(TimeInterval(settings.limitMinutes * 60))
     }
 
+    /// Notes when Revoke first saw each app running, for the time limit.
+    private func noteRunning(_ ids: Set<String>) {
+        let now = Date()
+        let new = ids.filter { seenRunning[$0] == nil }
+        guard !new.isEmpty else { return }
+        for id in new { seenRunning[id] = now }
+        enforceTimeLimit()
+    }
+
     /// Revokes whatever is past its time limit and sets a timer for the next one.
     /// While a revocation is running this waits; it runs again when the queue empties.
+    ///
+    /// Access in the privacy lists counts from when it was granted. Other access and
+    /// Local Network, which Revoke can't see or date, count from when Revoke saw the
+    /// app running: an app that is running or ran since gets them reset and blocked
+    /// once each time limit.
     private func enforceTimeLimit() {
         deadlineTimer?.invalidate()
         deadlineTimer = nil
         guard settings.revokeAfterLimit, pending == 0 else { return }
 
         let now = Date()
+        let limit = TimeInterval(settings.limitMinutes * 60)
         var next: Date?
-        for (client, entries) in snapshot.entries where client.bundleID != nil && settings.isWatched(client) {
+        func wake(at date: Date) { next = min(next ?? date, date) }
+        let clients = Set(snapshot.entries.keys).union(seenRunning.keys.map(Client.bundle))
+        for client in clients where settings.isWatched(client) {
+            guard let id = client.bundleID else { continue }
+            if let retry = limitRetry[id] {
+                if retry > now { wake(at: retry); continue }
+                limitRetry[id] = nil
+            }
             var due: [Pane] = []
             for pane in Pane.allCases where pane.tccService != nil {
-                guard let deadline = deadline(for: entries[pane]) else { continue }
-                if deadline <= now { due.append(pane) } else { next = min(next ?? deadline, deadline) }
+                guard let deadline = deadline(for: snapshot.entries[client]?[pane]) else { continue }
+                if deadline <= now { due.append(pane) } else { wake(at: deadline) }
             }
-            if !due.isEmpty { revoke([client], panes: due + [.links, .other], reason: "its time limit ran out") }
+            var ranTooLong = false
+            if let seen = seenRunning[id] {
+                let deadline = max(seen, settings.limitStart).addingTimeInterval(limit)
+                if deadline <= now { ranTooLong = true } else { wake(at: deadline) }
+            }
+            guard !due.isEmpty || ranTooLong else { continue }
+
+            var panes = due + [.links, .other]
+            if ranTooLong {
+                panes.append(.localNetwork)
+                // The next limit counts from now while it's still running, or from
+                // when it next runs.
+                let running = runningAppIDs.contains(id) || !Processes.pids(of: [id]).isEmpty
+                seenRunning[id] = running ? now : nil
+            }
+            revokeForTimeLimit(client, panes: panes, due: due)
         }
 
         if let next {
@@ -722,6 +902,22 @@ final class AccessModel: ObservableObject {
             }
             RunLoop.main.add(timer, forMode: .common)
             deadlineTimer = timer
+        }
+    }
+
+    /// Revokes one app's access at its time limit. If what was due is still allowed
+    /// afterward, because tccutil failed or macOS kept the entry, the app waits a few
+    /// minutes before the next try rather than running tccutil again at once.
+    private func revokeForTimeLimit(_ client: Client, panes: [Pane], due: [Pane]) {
+        guard let id = client.bundleID else { return }
+        log.notice("Revoking \(panes.map(\.shortTitle), privacy: .public) for \(id, privacy: .public) at its time limit")
+        enqueue {
+            await self.perform(ids: [id], panes: panes, reason: "its time limit ran out")
+            let now = Date()
+            let stillDue = due.contains { pane in
+                self.deadline(for: self.snapshot.entries[client]?[pane]).map { $0 <= now } ?? false
+            }
+            if stillDue { self.limitRetry[id] = now.addingTimeInterval(Self.limitRetryDelay) }
         }
     }
 }

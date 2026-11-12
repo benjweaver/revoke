@@ -6,7 +6,8 @@ import SystemExtensions
 private let log = Logger(subsystem: "dev.benjweaver.Revoke", category: "filter")
 
 /// Revoke's network filter, as the app sees it: installing the system extension,
-/// switching the filter on, and telling it which apps to keep off the local network.
+/// switching the filter on, and asking it which apps it keeps off the local network
+/// and to change that.
 @MainActor
 final class NetworkFilter: NSObject, ObservableObject {
     enum State: Equatable {
@@ -21,15 +22,33 @@ final class NetworkFilter: NSObject, ObservableObject {
     }
 
     @Published private(set) var state = State.checking
-    /// Called whenever the filter is ready for the list of blocked apps.
+    /// Called whenever the filter switches on, so the app can read its list of blocked apps.
     var onReady: (() -> Void)?
 
     private var activation: OSSystemExtensionRequest?
     /// Whether `activation` is the request that removes the filter.
     private var removing = false
     private var connection: NSXPCConnection?
+    private var configurationObserver: NSObjectProtocol?
 
     var isOn: Bool { state == .on }
+
+    override init() {
+        super.init()
+        // The filter can be switched off or on in System Settings while Revoke runs.
+        configurationObserver = NotificationCenter.default.addObserver(
+            forName: .NEFilterConfigurationDidChange, object: NEFilterManager.shared(), queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.configurationDidChange() }
+        }
+    }
+
+    /// Reads the filter's switch again, once the extension is known to be installed
+    /// and allowed. Before then, refresh and install decide the state.
+    private func configurationDidChange() {
+        guard state == .on || state == .off else { return }
+        readFilterSwitch()
+    }
 
     /// Finds out where things stand, without changing anything.
     func refresh() {
@@ -93,15 +112,113 @@ final class NetworkFilter: NSObject, ObservableObject {
         }
     }
 
-    /// Sends the full list of blocked apps, by code-signing identifier.
-    func send(blocked identifiers: [String]) {
-        guard isOn else { return }
-        // XPC calls the handler on its own queue, so it can't be main-actor isolated.
-        let onError: @Sendable (Error) -> Void = { error in
-            log.error("Can't reach the network filter: \(error.localizedDescription, privacy: .public)")
+    /// Why a request didn't reach the filter.
+    struct Failure: LocalizedError {
+        let errorDescription: String?
+    }
+
+    /// The apps the filter keeps off the local network, by code-signing identifier.
+    func blocked() async -> Result<[String], Failure> {
+        await call { $0.getBlocked(reply: $1) }
+    }
+
+    /// Adds apps to the filter's list. Returns the list as the filter has it afterward.
+    func block(_ identifiers: [String]) async -> Result<[String], Failure> {
+        await call { $0.block(identifiers, reply: $1) }
+    }
+
+    /// Takes apps off the filter's list. Returns the list as the filter has it afterward.
+    func unblock(_ identifiers: [String]) async -> Result<[String], Failure> {
+        await call { $0.unblock(identifiers, reply: $1) }
+    }
+
+    /// Lets blocked apps through for a while. The filter blocks them again itself.
+    func allow(_ identifiers: [String], minutes: Int) async -> Result<[String], Failure> {
+        await call { $0.allow(identifiers, minutes: minutes, reply: $1) }
+    }
+
+    /// The apps kept to their model provider's hosts on the internet at this moment.
+    func limited() async -> Result<[String], Failure> {
+        await call { $0.getLimited(reply: $1) }
+    }
+
+    /// Keeps apps to these hosts on the internet. Returns the apps limited afterward.
+    func limitInternet(_ identifiers: [String], hosts: [String]) async -> Result<[String], Failure> {
+        await call { $0.limitInternet(identifiers, hosts: hosts, reply: $1) }
+    }
+
+    func unlimitInternet(_ identifiers: [String]) async -> Result<[String], Failure> {
+        await call { $0.unlimitInternet(identifiers, reply: $1) }
+    }
+
+    /// Gives limited apps the whole internet for a while. The filter limits them again itself.
+    func allowInternet(_ identifiers: [String], minutes: Int) async -> Result<[String], Failure> {
+        await call { $0.allowInternet(identifiers, minutes: minutes, reply: $1) }
+    }
+
+    /// Sends one request and waits for the filter's answer. When the connection was
+    /// dropped, as when the extension restarts with the filter, it's made again and
+    /// the request sent once more.
+    private func call(
+        _ request: @escaping @Sendable (FilterControl, @escaping @Sendable ([String]) -> Void) -> Void
+    ) async -> Result<[String], Failure> {
+        var lastError: Error?
+        for attempt in 0..<3 {
+            guard isOn else { return .failure(Failure(errorDescription: "The network filter is off.")) }
+            let connection = self.connection ?? connect()
+            let answer: Result<[String], Error> = await withCheckedContinuation { continuation in
+                // XPC calls exactly one of the two handlers, on its own queue.
+                let onError: @Sendable (Error) -> Void = { continuation.resume(returning: .failure($0)) }
+                guard let proxy = connection.remoteObjectProxyWithErrorHandler(onError) as? FilterControl else {
+                    return continuation.resume(returning: .failure(Failure(errorDescription: "The network filter didn't answer.")))
+                }
+                request(proxy) { continuation.resume(returning: .success($0)) }
+            }
+            if case .success(let list) = answer { return .success(list) }
+            if case .failure(let error) = answer { lastError = error }
+            let code = lastError.map { ($0 as NSError).code }
+            guard code == NSXPCConnectionInterrupted || code == NSXPCConnectionInvalid else { break }
+            forget(connection)
+            // A second failure means the filter isn't listening, which a fresh
+            // connection can't fix. Starting the filter again can, once.
+            if attempt == 1 {
+                guard !restarted else { break }
+                restarted = true
+                await restartProvider()
+            }
         }
-        let proxy = (connection ?? connect()).remoteObjectProxyWithErrorHandler(onError) as? FilterControl
-        proxy?.setBlocked(identifiers) {}
+        let description = lastError?.localizedDescription ?? "The network filter didn't answer."
+        log.error("Can't reach the network filter: \(description, privacy: .public)")
+        return .failure(Failure(errorDescription: description))
+    }
+
+    /// Whether this run of Revoke has already started the filter again.
+    private var restarted = false
+
+    /// Switches the filter off and on, which starts its provider afresh. A filter that
+    /// took over from an older one can come up unable to hear Revoke: the older one
+    /// still held the name of the service they share. It keeps blocking what it was
+    /// told to, but can't be read or changed until it starts again. Connections aren't
+    /// filtered for the moment in between.
+    private func restartProvider() async {
+        log.notice("The network filter isn't answering; starting it again")
+        let manager = NEFilterManager.shared()
+        for enabled in [false, true] {
+            await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+                manager.loadFromPreferences { _ in
+                    MainActor.assumeIsolated {
+                        NEFilterManager.shared().isEnabled = enabled
+                        NEFilterManager.shared().saveToPreferences { error in
+                            if let error { log.error("Couldn't switch the filter \(enabled ? "on" : "off", privacy: .public): \(error.localizedDescription, privacy: .public)") }
+                            continuation.resume()
+                        }
+                    }
+                }
+            }
+        }
+        // The provider takes a moment to come up and start listening.
+        try? await Task.sleep(for: .seconds(2))
+        state = .on
     }
 
     private func connect() -> NSXPCConnection {
@@ -112,14 +229,26 @@ final class NetworkFilter: NSObject, ObservableObject {
             certificate leaf[subject.OU] = "AR25V66TVY"
             """)
         // The extension restarts with the filter, so a dropped connection is made again.
+        let id = ObjectIdentifier(connection)
         let forget: @Sendable () -> Void = { [weak self] in
-            Task { @MainActor in self?.connection = nil }
+            Task { @MainActor in self?.forget(id) }
         }
         connection.invalidationHandler = forget
         connection.interruptionHandler = forget
         connection.resume()
         self.connection = connection
         return connection
+    }
+
+    /// Lets go of a dropped connection, unless a newer one has taken its place.
+    private func forget(_ id: ObjectIdentifier) {
+        guard let connection, ObjectIdentifier(connection) == id else { return }
+        connection.invalidate()
+        self.connection = nil
+    }
+
+    private func forget(_ connection: NSXPCConnection) {
+        forget(ObjectIdentifier(connection))
     }
 
     /// The extension is installed and allowed; whether the filter is on is a
@@ -130,8 +259,9 @@ final class NetworkFilter: NSObject, ObservableObject {
                 let manager = NEFilterManager.shared()
                 let ours = manager.providerConfiguration?.filterDataProviderBundleIdentifier
                     == FilterIdentity.extensionBundleID
+                let wasOn = self.isOn
                 self.state = ours && manager.isEnabled ? .on : .off
-                if self.isOn { self.onReady?() }
+                if self.isOn && !wasOn { self.onReady?() }
             }
         }
     }

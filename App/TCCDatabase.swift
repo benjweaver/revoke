@@ -20,7 +20,7 @@ enum TCCDatabase {
         defer { sqlite3_close(db) }
         guard sqlite3_open_v2(path, &db, SQLITE_OPEN_READONLY, nil) == SQLITE_OK else { return nil }
 
-        let services = Pane.allCases.compactMap(\.tccService).map { "'\($0)'" }.joined(separator: ", ")
+        let services = Pane.allCases.flatMap { ($0.tccService.map { [$0] } ?? []) + $0.extraTCCServices }.map { "'\($0)'" }.joined(separator: ", ")
         let sql = """
             SELECT service, client, client_type, auth_value, last_modified, csreq FROM access
             WHERE service IN (\(services))
@@ -34,7 +34,7 @@ enum TCCDatabase {
             switch sqlite3_step(statement) {
             case SQLITE_ROW:
                 guard let service = text(statement, 0), let name = text(statement, 1),
-                      let pane = Pane.allCases.first(where: { $0.tccService == service }) else { continue }
+                      let pane = Pane.pane(forTCCService: service) else { continue }
                 // client_type 0 is a bundle ID and 1 an executable path.
                 let client: Client = sqlite3_column_int(statement, 2) == 0 ? .bundle(name) : .path(name)
                 // auth_value 2 is allowed and 3 limited. 0 is a switched-off entry.

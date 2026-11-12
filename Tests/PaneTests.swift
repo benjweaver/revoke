@@ -15,6 +15,22 @@ struct PaneTests {
         #expect(Pane.other.tccutilServices.contains("AppleEvents"))
     }
 
+    @Test func deviceControlCoversPostEvent() {
+        // System Settings lists posting synthetic clicks and keys under Accessibility.
+        #expect(Pane.deviceControl.tccutilServices.contains("PostEvent"))
+        #expect(Pane.deviceControl.tccService == "kTCCServiceAccessibility")
+        #expect(Pane.pane(forTCCService: "kTCCServicePostEvent") == .deviceControl)
+        #expect(Pane.pane(forTCCService: "kTCCServiceAccessibility") == .deviceControl)
+        #expect(Pane.pane(forTCCService: "kTCCServiceListenEvent") == .inputMonitoring)
+        #expect(Pane.pane(forTCCService: "kTCCServiceCamera") == nil)
+        let others = Set(OtherAccess.allCases.flatMap(\.tccutilServices))
+        #expect(others.isDisjoint(with: Pane.deviceControl.tccutilServices))
+        for service in ["SystemPolicyAppData", "SystemPolicySysAdminFiles", "DeveloperTool", "BluetoothAlways",
+                        "SpeechRecognition", "RemoteDesktop"] {
+            #expect(others.contains(service), "\(service)")
+        }
+    }
+
     @Test func codingAgentsAreWatchedWhateverTheirBundleIDLooksLike() {
         // Cursor ships under a ToDesktop ID; Grok Bot is made by Anysphere.
         // DeepSeek's current app is com.deepseek.dsh; older builds were com.deepseek.harness.
@@ -63,13 +79,19 @@ struct PaneTests {
             info: ["NSAppleEventsUsageDescription": "", "NSCameraUsageDescription": "", "NSMicrophoneUsageDescription": "",
                    "NSDesktopFolderUsageDescription": ""],
             entitlements: ["com.apple.security.personal-information.photos-library": true])
-        #expect(claude == [.automation, .camera, .microphone, .files, .appManagement, .personalData])
+        #expect(claude == [.automation, .camera, .microphone, .files, .appManagement, .personalData,
+                           .otherAppsData, .systemFiles, .developerTools, .remoteDesktop])
         let claudeCode = OtherAccess.askable(
             info: ["NSAppleEventsUsageDescription": "", "NSMicrophoneUsageDescription": ""],
             entitlements: ["com.apple.security.automation.apple-events": true])
-        #expect(claudeCode == [.automation, .microphone, .files, .appManagement])
-        // Any app can ask for files and folders, and for App Management.
-        #expect(OtherAccess.askable(info: [:], entitlements: [:]) == [.files, .appManagement])
+        #expect(claudeCode == [.automation, .microphone, .files, .appManagement,
+                               .otherAppsData, .systemFiles, .developerTools, .remoteDesktop])
+        // Any app can ask for files and folders, App Management, and the others without a key.
+        #expect(OtherAccess.askable(info: [:], entitlements: [:])
+                == [.files, .appManagement, .otherAppsData, .systemFiles, .developerTools, .remoteDesktop])
+        #expect(OtherAccess.askable(info: ["NSBluetoothAlwaysUsageDescription": ""], entitlements: [:]).contains(.bluetooth))
+        #expect(OtherAccess.askable(info: [:], entitlements: ["com.apple.security.device.bluetooth": true]).contains(.bluetooth))
+        #expect(OtherAccess.askable(info: ["NSSpeechRecognitionUsageDescription": ""], entitlements: [:]).contains(.speechRecognition))
     }
 
     @Test func rowAllAccessSwitchReflectsRevocableAccessOnly() {

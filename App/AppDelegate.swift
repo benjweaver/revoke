@@ -8,6 +8,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let filter: NetworkFilter
     private let model: AccessModel
     private let prompt: LinkPrompt
+    private let requests: AccessRequestPrompt
     private var statusItem: NSStatusItem?
     private let popover = NSPopover()
     private var panel: NSHostingController<PanelView>?
@@ -24,16 +25,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         filter = NetworkFilter()
         model = AccessModel(settings: settings, filter: filter)
         prompt = LinkPrompt(settings: settings)
+        requests = AccessRequestPrompt(settings: settings, model: model)
         super.init()
         prompt.onActivity = { [weak model] in model?.note($0) }
+        requests.listenForCommands()
     }
 
-    /// macOS opened Revoke for a link or a file it stands in for. The Apple event says
-    /// which process asked, so the question can name it.
+    /// macOS opened Revoke for a link or a file it stands in for, or for a revoke://
+    /// link, which is an app asking for access. The Apple event says which process
+    /// asked, so the question can name it.
     func application(_ application: NSApplication, open urls: [URL]) {
         let event = NSAppleEventManager.shared().currentAppleEvent
         let sender = event?.attributeDescriptor(forKeyword: AEKeyword(keySenderPIDAttr))?.int32Value
-        prompt.receive(urls, sender: sender)
+        for url in urls where AccessRequest.isRequest(url) { requests.receive(url, sender: sender) }
+        let links = urls.filter { !AccessRequest.isRequest($0) }
+        if !links.isEmpty { prompt.receive(links, sender: sender) }
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {

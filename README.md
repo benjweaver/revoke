@@ -163,6 +163,10 @@ malware could give itself screen recording. So:
   Revoke isn't running after the app re-registered, goes straight to the app. A file
   type an app takes back stays with it until you switch Links off again, since taking
   it means a macOS dialog; the switch turns orange to show it.
+- **Revoke's other settings are yours to change, and so an agent's.** Which apps are
+  watched, the automatic revocations, and which links Revoke stands in for are kept in
+  Revoke's preferences in your account, where a process running as you can edit them
+  while Revoke is quit. Only the Local Network list is kept out of reach, by the filter.
 
 ## Blocking Local Network
 
@@ -182,6 +186,75 @@ The filter only sees connections to and from local-network addresses, and if it 
 or crashes macOS lets traffic through rather than cutting the Mac off. It can't block
 Bonjour discovery, which macOS's own mDNSResponder does on an app's behalf. Only Revoke,
 signed with the same Developer ID, can change what it blocks.
+
+The filter keeps its list of blocked apps itself, saved as root, and Revoke reads it
+from there each time the filter switches on. A blocked app can't lift its own block by
+editing Revoke's settings: only you can, by switching its Local Network back on in the
+panel or saying yes when it asks (see below). Revoke's automatic revocations only ever
+add blocks.
+
+## Limiting the internet to an app's model
+
+An agent needs its model provider's servers to work at all, and for most jobs nothing
+else on the internet. Switch an app's **Internet** off in the panel: the filter then
+drops the app's connections to the internet, commands it starts included, except to
+its developer's own hosts and any you add in Settings. The switch's tooltip lists them.
+The local network isn't part of this; it keeps its own switch. Revoke All Watched and
+the automatic options leave Internet alone, since an agent kept to its model can't
+search or fetch.
+
+- **Built-in hosts** cover Anthropic (`anthropic.com`, `claude.ai`, `claude.com`,
+  `claudeusercontent.com`),
+  OpenAI, Cursor, and DeepSeek, subdomains included. Other apps start with none, so
+  add their model's hosts in Settings first.
+- **Hosts you add** in Settings apply to every limited app, and take effect the next
+  time you switch an app's Internet off.
+- **What stops working** is everything else the app does online: web search, `git
+  push`, `npm install`, update checks, telemetry, and MCP servers that call out. The
+  app can ask for the whole internet for a while (see below).
+
+The filter goes by the host a connection names: the one macOS recorded for the address,
+and the server name a TLS connection asks for, which both have to be allowed. That
+stops an agent a web page talked into fetching or posting somewhere. It doesn't stop
+one built to lie: providers sit behind content networks that many sites share, and a
+connection that names an allowed host there can be answered by another site on the
+same network. Connections that name no host at all are dropped.
+
+While any app is limited, the filter looks at every new connection on the Mac to see
+whose it is, and lets everything from other apps straight through.
+
+## Asking for access
+
+An agent that finds something blocked can ask you for it instead of working around the
+block:
+
+```bash
+/Applications/Revoke.app/Contents/MacOS/Revoke --request "revoke://request?access=local-network&minutes=15&reason=Reach%20the%20test%20VM"
+```
+
+The command waits for your answer, prints `yes`, `no`, or `ignored`, and exits 0 only
+for yes. Opening the same link with `open` works too, but `open` has usually exited by
+the time Revoke looks for who ran it, and a request Revoke can't trace is ignored unless
+it names an app.
+
+Revoke shows which app is asking, for what, for how long, and the reason in the app's
+own words. No is the default, and nothing changes unless you say yes.
+
+- `access` is `local-network`, `internet`, `device-control`, `screen-recording`,
+  `input-monitoring`, or `full-disk-access`. Links and Running can't be asked for.
+- `minutes` is how long, from 1 to 240. Without it, 15.
+- `reason` is a line of text, at most 300 characters.
+- `app` is a bundle ID, used only when Revoke can't tell which process opened the link.
+  The question then says the app is only what the request claims.
+
+For Local Network, yes lets the app through for that long, and then the filter blocks
+it again by itself, even if Revoke has quit by then. `internet` works the same way for
+an app limited to its model: the whole internet for that long, then the limit again. For the rest, only System Settings
+can grant access, so yes opens the right pane for you to switch it on.
+
+Revoke works out who's asking from the process that opened the link and the apps it
+runs inside, not from the link, so one app can't ask in another's name. After a no,
+the same request from the same app is ignored for a minute.
 
 ## Links
 
