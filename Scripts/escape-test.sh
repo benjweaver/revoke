@@ -32,7 +32,9 @@
 #
 # Needs:
 # - The "macOS 27" VM with Revoke set up in it: its network filter allowed and on. The
-#   script installs apps and flips switches; it doesn't grant anything.
+#   script installs apps and flips switches. The one thing it grants is macOS's own
+#   Local Network question about the test app, which it answers Allow: with that
+#   refused, macOS would do the blocking and Revoke's filter would never be tried.
 # - agent-guides' mac.sh (MAC_SH) and ssh to the VM as macos27 (MAC_HOST), as
 #   Scripts/screenshots.sh does. The VM needs the internet, for the two test hosts.
 # - Swift on this Mac, to build the test app in Scripts/escape-test.
@@ -178,6 +180,7 @@ listed() {
 # Flips a column for the watched apps and checks the test app landed in or out of a list.
 set_column() {
 	local column=$1 list=$2 want=$3
+	allow_local_network_question
 	panel_open || die "couldn't open Revoke's panel"
 	click_header "$column"
 	guest "osascript -e 'tell application \"System Settings\" to quit'" >/dev/null 2>&1 || true
@@ -211,6 +214,21 @@ expect() {
 }
 
 # MARK: - Links and dialogs
+
+# Answers Allow if macOS is asking whether the test app may use the local network. The
+# question comes when it likes, sits over the panel, and swallows the clicks meant for it.
+allow_local_network_question() {
+	guest "osascript -" <<EOF >/dev/null 2>&1 || true
+tell application "System Events"
+	if not (exists process "UserNotificationCenter") then return
+	tell process "UserNotificationCenter"
+		repeat with w in windows
+			if (value of static text 1 of w) contains "EscapeTest" then click button "Allow" of w
+		end repeat
+	end tell
+end tell
+EOF
+}
 
 # The app macOS opens the test app's links with now.
 link_handler() {
@@ -349,6 +367,8 @@ if why=$(filter_answers 2>&1); then pass "Revoke reaches its filter after the up
 
 print "==> Before anything is blocked"
 guest "open $test_app --args $gateway $allowed_host $other_host $log $extra_v4 $extra_v6"
+sleep 6
+allow_local_network_question
 line=$(results)
 for key in lan_direct lan_child lan_orphan lan_extra1 lan_extra2 net_allowed net_allowed_session net_other net_other_session net_fronted; do
 	expect "$line" $key ok "the test app reaches everything ($key)"
@@ -424,6 +444,7 @@ expect "$line" net_other ok "the app reaches the other host again"
 
 print "==> Everything switched off at once"
 [[ $(link_handler) == $test_app ]] || die "the test app doesn't handle $test_scheme links, so the link checks would prove nothing (it's $(link_handler))"
+allow_local_network_question
 panel_open || die "couldn't open Revoke's panel"
 click_header all-access
 sleep 4
