@@ -376,8 +376,14 @@ checks the new filter answers Revoke, blocks a test app's Local Network and chec
 app can't reach the network itself, through a command, or through a helper it hands to
 `launchd`, empties Revoke's saved list while Revoke is quit, limits the app's internet
 to one host and checks the rest is dropped, and asks for the internet for a minute and
-checks the limit returns. `SKIP_ESCAPE_TEST=1` skips it. It needs Revoke's filter allowed
-and on in the VM.
+checks the limit returns. It puts the VM on a carrier-grade NAT subnet and a global IPv6
+one and checks the block covers them, switches off all the app's access and checks every
+`tccutil` reset worked, opens a link Revoke holds and checks it reaches the app only
+after Yes, waits out the shortest time limit and checks the running app loses the local
+network, and checks `--restore-links` gives the link back only after Yes. The time limit
+makes a run take about half an hour; `SKIP_TIME_LIMIT=1` leaves it out of a run by hand.
+`SKIP_ESCAPE_TEST=1` skips the whole test. It needs Revoke's filter allowed and on in
+the VM.
 
 Notarizing needs an App Store Connect API key, saved once in the keychain as the
 notarytool profile `notary`:

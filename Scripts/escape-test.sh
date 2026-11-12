@@ -12,7 +12,9 @@
 #    unable to hear Revoke keeps blocking but can't be changed, and nothing else shows it.
 # 2. Local Network. Blocks a test app and checks it can't reach the VM's gateway from its
 #    own process, from a command it runs, or from a helper it disclaims and hands to
-#    launchd, and that it can again once the block is lifted.
+#    launchd, and that it can again once the block is lifted. The same for two subnets
+#    outside the private ranges that the VM is put on for the run: a carrier-grade NAT
+#    one and a global IPv6 one.
 # 3. Tampering. Empties Revoke's saved list of blocked apps while Revoke is quit, and
 #    checks the block holds and the list comes back.
 # 4. Internet. Limits the test app to one host and checks it reaches that host and not
@@ -20,6 +22,13 @@
 #    sent to the allowed host's address, and that the local network still works.
 # 5. Requests. Asks for the internet for a minute with `Revoke --request`, says yes, and
 #    checks the limit lifts and then comes back by itself.
+# 6. Everything at once. Switches off all the test app's access and checks every reset
+#    Revoke ran with tccutil worked, and that macOS knows each service Revoke names.
+# 7. Links. With the test app's links held, opens one and checks it reaches the app only
+#    after Yes, and that `Revoke --restore-links` gives the link back only after Yes.
+# 8. The time limit. Sets the shortest one, 15 minutes, and checks the running app keeps
+#    the local network until then and loses it after. SKIP_TIME_LIMIT=1 leaves this out
+#    of a run by hand; a release always runs it.
 #
 # Needs:
 # - The "macOS 27" VM with Revoke set up in it: its network filter allowed and on. The
@@ -28,13 +37,18 @@
 #   Scripts/screenshots.sh does. The VM needs the internet, for the two test hosts.
 # - Swift on this Mac, to build the test app in Scripts/escape-test.
 # - Nobody using the VM's screen meanwhile: the script clicks in it.
+# - A VM kept for testing. The switches it flips are the Watched row's, which act on
+#   every watched app in the VM, not only the test app: the others are blocked and
+#   limited along with it, have their Other access reset, and come out with Local
+#   Network and the internet allowed, whatever they had before.
 #
 # It clicks the Watched row's switches by position, since macOS doesn't offer the panel's
 # switches to accessibility there, and checks each click against Revoke's own lists. If
 # the panel's layout changes, the offsets in `column` and `header_y` are what to update.
 #
-# The VM is left as it was: the test app is removed, the blocks and limits it set are
-# lifted, Revoke's watch list is put back, and the VM is shut down if this script started it.
+# The VM is left as it was: the test app and the two extra subnets are removed, the
+# blocks and limits the run set are lifted, the test app's link is given back, Revoke's
+# settings are put back, and the VM is shut down if this script started it.
 set -eu
 cd "$(dirname "$0")/.."
 
@@ -46,6 +60,15 @@ allowed_host=example.com
 other_host=example.org
 test_id=com.example.revoke-escape-test
 test_app=/Applications/EscapeTest.app
+test_scheme=revoke-escape-test
+# Addresses for the VM's own interface, in subnets that only being on-link makes local:
+# carrier-grade NAT, and IPv6's range for documentation, which is global as far as the
+# filter can tell.
+extra_v4=100.64.77.1
+extra_v6=2001:db8:77::1
+# The shortest time limit Revoke offers, and how long past it the run waits.
+limit_minutes=15
+limit_grace=120
 log=/tmp/revoke-escape-test.log
 defaults_domain=dev.benjweaver.Revoke
 # Longer than a run takes; cleanup ends it sooner.
@@ -62,27 +85,35 @@ die() { print -u2 -r -- "escape-test.sh: $1"; exit 2; }
 [[ -d $app ]] || die "no app at $app; run Scripts/build.sh first, or set APP"
 [[ -f $MAC_SH ]] || die "no mac.sh at $MAC_SH"
 
-saved_watched=
+saved_settings=/tmp/revoke-escape-settings.plist
+iface=
 cleanup() {
 	local rc=$?
 	trap - EXIT INT TERM
 	print "==> Putting the VM back"
 	guest "pkill -f 'caffeinate -d -u -t $awake_seconds'" >/dev/null 2>&1 || true
-	guest "pkill -x EscapeTest; rm -rf $test_app $log $log.orphan /tmp/revoke-escape-app.zip /tmp/revoke-escape-test.zip" >/dev/null 2>&1 || true
-	# Lift whatever the run left, through the panel like everything else.
+	# The time limit first, with Revoke quit, so it can't take anything back meanwhile.
+	mac quit Revoke >/dev/null 2>&1 || true
+	guest "pkill -x Revoke; sleep 1; defaults delete $defaults_domain limitStart; defaults delete $defaults_domain limitMinutes; defaults delete $defaults_domain revokeAfterLimit" >/dev/null 2>&1 || true
+	# Lift whatever the run left, through the panel like everything else, which needs
+	# Revoke running and the test app still there.
+	guest '(nohup open /Applications/Revoke.app >/dev/null 2>&1 &)' >/dev/null 2>&1 || true
+	sleep 6
 	if panel_open 2>/dev/null; then
 		[[ $(listed localNetworkBlocked) == yes ]] && click_header local-network || true
 		[[ $(listed internetLimited) == yes ]] && click_header internet || true
+		[[ $(listed linksBlocked) == yes ]] && click_header links || true
 		mac key esc >/dev/null 2>&1 || true
 	fi
 	guest "osascript -e 'tell application \"System Settings\" to quit'" >/dev/null 2>&1 || true
 	mac quit Revoke >/dev/null 2>&1 || true
 	sleep 1
-	if [[ -n $saved_watched ]]; then
-		guest "defaults write $defaults_domain watched -array $saved_watched; defaults delete $defaults_domain extraInternetHosts" >/dev/null 2>&1 || true
-	else
-		guest "defaults write $defaults_domain watched -array; defaults delete $defaults_domain extraInternetHosts" >/dev/null 2>&1 || true
+	guest "pkill -x EscapeTest; rm -rf $test_app $log $log.orphan $log.links /tmp/revoke-escape-app.zip /tmp/revoke-escape-test.zip /tmp/revoke-escape-answer.txt" >/dev/null 2>&1 || true
+	if [[ -n $iface ]]; then
+		guest "sudo ifconfig $iface -alias $extra_v4; sudo ifconfig $iface inet6 $extra_v6 -alias" >/dev/null 2>&1 || true
 	fi
+	# Revoke's settings as they were, the links it held for other apps included.
+	guest "test -f $saved_settings && defaults import $defaults_domain $saved_settings && rm -f $saved_settings" >/dev/null 2>&1 || true
 	mac restore >/dev/null 2>&1 || true
 	mac down || true
 	(( rc == 0 && failures > 0 )) && rc=1
@@ -150,7 +181,11 @@ set_column() {
 	panel_open || die "couldn't open Revoke's panel"
 	click_header "$column"
 	guest "osascript -e 'tell application \"System Settings\" to quit'" >/dev/null 2>&1 || true
-	[[ $(listed "$list") == $want ]] || die "clicking $column didn't change $list; has the panel's layout moved? (see column and header_y)"
+	if [[ $(listed "$list") != $want ]]; then
+		# What the screen looked like, for whoever has to work out why.
+		panel_open && mac shot build/escape-test-failure.png >/dev/null 2>&1 || true
+		die "clicking $column didn't change $list; has the panel's layout moved? (see column and header_y, and build/escape-test-failure.png)"
+	fi
 	mac key esc >/dev/null 2>&1 || true
 }
 
@@ -173,6 +208,41 @@ results() {
 expect() {
 	local got=${${(M)${(z)1}:#$2=*}#*=}
 	if [[ $got == $3 ]]; then pass "$4"; else fail "$4 ($2 was ${got:-missing}, wanted $3)"; fi
+}
+
+# MARK: - Links and dialogs
+
+# The app macOS opens the test app's links with now.
+link_handler() {
+	guest "osascript -l JavaScript -" <<EOF
+ObjC.import("AppKit");
+var app = \$.NSWorkspace.sharedWorkspace.URLForApplicationToOpenURL(\$.NSURL.URLWithString("$test_scheme:"));
+app.isNil() ? "none" : ObjC.unwrap(app.path);
+EOF
+}
+
+# Whether a link reached the test app.
+got_link() {
+	guest "grep -qx '$1' $log.links 2>/dev/null"
+}
+
+# Opens a link for the test app, which goes to whichever app handles them, and answers
+# Revoke's question by clicking a button by its name.
+open_link() {
+	guest "open '$1'; sleep 4
+		osascript -e 'tell application \"System Events\" to tell process \"Revoke\" to click button \"$2\" of window 1' >/dev/null 2>&1
+		sleep 3" || true
+}
+
+# Runs Revoke --restore-links, answers its question, and prints what it said. The
+# question belongs to the command's own process, not to the Revoke in the menu bar.
+restore_links() {
+	guest "/Applications/Revoke.app/Contents/MacOS/Revoke --restore-links > /tmp/revoke-escape-answer.txt 2>&1 &
+		pid=\$!
+		sleep 4
+		osascript -e 'tell application \"System Events\" to click button \"$1\" of window 1 of (first process whose unix id is '\$pid')' >/dev/null 2>&1
+		sleep 6
+		cat /tmp/revoke-escape-answer.txt; rm -f /tmp/revoke-escape-answer.txt" 2>/dev/null || true
 }
 
 # MARK: - Installing
@@ -220,15 +290,22 @@ mac prep light >/dev/null
 # another rectangle and clicks do nothing, so it's held awake for the whole run, and a
 # key press wakes it if it had already gone.
 guest "(nohup caffeinate -d -u -t $awake_seconds >/dev/null 2>&1 &); sleep 1; /usr/local/bin/gui key shift" >/dev/null 2>&1 || true
-# Whatever the person watches, to put back afterward.
-saved_watched=$(guest "defaults read $defaults_domain watched 2>/dev/null" | tr -d '()\n' | sed 's/,/ /g; s/  */ /g') || true
+# Revoke's settings, to put back afterward. A file left by a run that was cut short
+# is the older copy, and the one to keep.
+guest "test -f $saved_settings || defaults export $defaults_domain $saved_settings" || die "couldn't save Revoke's settings in the VM"
+[[ $(guest "defaults read $defaults_domain revokeAfterLimit 2>/dev/null") != 1 ]] || die "Revoke's time limit is on in the VM, and would revoke partway through; switch it off first"
 gateway=$(guest "route -n get default 2>/dev/null | awk '/gateway/ { print \$2 }'")
 [[ -n $gateway ]] || die "the VM has no default gateway to test the local network with"
 guest "nc -z -G 3 $gateway 53" >/dev/null 2>&1 || die "the VM's gateway $gateway doesn't answer on port 53"
+# Two more subnets on the same interface. The addresses are the VM's own, which is
+# enough: the filter decides by the address a connection goes to.
+iface=$(guest "route -n get default 2>/dev/null | awk '/interface/ { print \$2 }'")
+guest "sudo ifconfig $iface alias $extra_v4 netmask 255.255.255.0 && sudo ifconfig $iface inet6 $extra_v6 prefixlen 64 alias" || die "couldn't add the test subnets to $iface in the VM"
+sleep 4
 
 print "==> Building the test app"
 build=$(mktemp -d)
-swiftc -O Scripts/escape-test/main.swift -o "$build/EscapeTest"
+swiftc -O -warnings-as-errors Scripts/escape-test/main.swift -o "$build/EscapeTest"
 mkdir -p "$build/EscapeTest.app/Contents/MacOS"
 mv "$build/EscapeTest" "$build/EscapeTest.app/Contents/MacOS/EscapeTest"
 cat > "$build/EscapeTest.app/Contents/Info.plist" <<EOF
@@ -242,13 +319,17 @@ cat > "$build/EscapeTest.app/Contents/Info.plist" <<EOF
 	<key>CFBundleShortVersionString</key><string>1.0</string>
 	<key>CFBundleVersion</key><string>1</string>
 	<key>LSUIElement</key><true/>
+	<key>CFBundleURLTypes</key><array><dict>
+		<key>CFBundleURLName</key><string>$test_id</string>
+		<key>CFBundleURLSchemes</key><array><string>$test_scheme</string></array>
+	</dict></array>
 </dict></plist>
 EOF
 codesign -f -s - -i "$test_id" "$build/EscapeTest.app" 2>/dev/null
 ditto -c -k --keepParent "$build/EscapeTest.app" "$build/test.zip"
 scp -q "$build/test.zip" "$host:/tmp/revoke-escape-test.zip"
 rm -rf "$build"
-guest "pkill -x EscapeTest; rm -rf $test_app $log $log.orphan; ditto -x -k /tmp/revoke-escape-test.zip /Applications/ && rm -f /tmp/revoke-escape-test.zip"
+guest "pkill -x EscapeTest; rm -rf $test_app $log $log.orphan $log.links; ditto -x -k /tmp/revoke-escape-test.zip /Applications/ && rm -f /tmp/revoke-escape-test.zip"
 
 print "==> Update: the latest release, then this build over it"
 read -r url sha version <<< "$(mac cask "$tap" revoke)"
@@ -259,14 +340,17 @@ candidate="$(plutil -extract CFBundleShortVersionString raw "$app/Contents/Info.
 print "  from $version to $candidate"
 install_app "$app"
 # The watch list and the test's host are Revoke's ordinary settings, set while it's quit.
-guest "defaults write $defaults_domain watched -array $test_id; defaults write $defaults_domain extraInternetHosts -array $allowed_host"
+# The links Revoke holds for the VM's other apps are set aside with them, so
+# --restore-links below gives back the test app's link and no one else's. macOS still
+# sends those links to Revoke meanwhile, and the settings come back at the end.
+guest "defaults write $defaults_domain watched -array $test_id; defaults write $defaults_domain extraInternetHosts -array $allowed_host; defaults delete $defaults_domain linksBlocked; defaults delete $defaults_domain linkOwners" || true
 if start_revoke; then pass "this build's filter took over"; else fail "this build's filter didn't take over"; fi
 if why=$(filter_answers 2>&1); then pass "Revoke reaches its filter after the update"; else fail "Revoke can't reach its filter after the update: $why"; fi
 
 print "==> Before anything is blocked"
-guest "open $test_app --args $gateway $allowed_host $other_host $log"
+guest "open $test_app --args $gateway $allowed_host $other_host $log $extra_v4 $extra_v6"
 line=$(results)
-for key in lan_direct lan_child lan_orphan net_allowed net_allowed_session net_other net_other_session net_fronted; do
+for key in lan_direct lan_child lan_orphan lan_extra1 lan_extra2 net_allowed net_allowed_session net_other net_other_session net_fronted; do
 	expect "$line" $key ok "the test app reaches everything ($key)"
 done
 (( failures == 0 )) || die "the test app can't reach its targets with nothing blocked, so the rest would prove nothing"
@@ -277,6 +361,8 @@ line=$(results)
 expect "$line" lan_direct no "a connection from the app itself is dropped"
 expect "$line" lan_child no "a connection from a command it runs is dropped"
 expect "$line" lan_orphan no "a connection from a helper it handed to launchd is dropped"
+expect "$line" lan_extra1 no "a connection to a carrier-grade NAT subnet the VM is on is dropped"
+expect "$line" lan_extra2 no "a connection to a global IPv6 subnet the VM is on is dropped"
 expect "$line" net_other ok "the internet is untouched"
 if guest "nc -z -G 3 $gateway 53" >/dev/null 2>&1; then pass "an app that isn't blocked still reaches the gateway"; else fail "an app that isn't blocked lost the gateway too"; fi
 
@@ -296,6 +382,11 @@ set_column local-network localNetworkBlocked no
 line=$(results)
 expect "$line" lan_direct ok "the app reaches the gateway again"
 expect "$line" lan_orphan ok "and so does its helper"
+expect "$line" lan_extra1 ok "and it reaches the carrier-grade NAT subnet"
+expect "$line" lan_extra2 ok "and the global IPv6 subnet"
+# The two subnets have done their job. Left on, the IPv6 one gives the VM a global
+# address with no route behind it, which the internet checks below would trip over.
+guest "sudo ifconfig $iface -alias $extra_v4; sudo ifconfig $iface inet6 $extra_v6 -alias" >/dev/null 2>&1 || true
 
 print "==> Internet limited to $allowed_host"
 set_column internet internetLimited yes
@@ -330,6 +421,78 @@ print "==> Internet allowed again"
 set_column internet internetLimited no
 line=$(results)
 expect "$line" net_other ok "the app reaches the other host again"
+
+print "==> Everything switched off at once"
+[[ $(link_handler) == $test_app ]] || die "the test app doesn't handle $test_scheme links, so the link checks would prove nothing (it's $(link_handler))"
+panel_open || die "couldn't open Revoke's panel"
+click_header all-access
+sleep 4
+guest "osascript -e 'tell application \"System Settings\" to quit'" >/dev/null 2>&1 || true
+mac key esc >/dev/null 2>&1 || true
+if [[ $(listed localNetworkBlocked) == yes ]]; then pass "Local Network is blocked"; else fail "Local Network wasn't blocked"; fi
+if [[ $(listed linksBlocked) == yes && $(link_handler) == /Applications/Revoke.app ]]; then
+	pass "Revoke stands in for the test app's links"
+else
+	fail "Revoke didn't take the test app's links (they open $(link_handler))"
+fi
+# Each service is reset with tccutil, which fails on a name macOS doesn't know.
+resets=$(guest "/usr/bin/log show --last 2m --style compact --predicate 'subsystem == \"dev.benjweaver.Revoke\" AND eventMessage CONTAINS \"tccutil reset\"' 2>/dev/null | grep -v Timestamp") || true
+if [[ -z $resets ]]; then pass "every reset Revoke ran with tccutil worked"; else fail "a tccutil reset failed: $resets"; fi
+# And each name on its own, since Revoke only reports the first failure.
+services=($(awk '/var tccutilServices/ { on = 1 } on && /^    }/ { on = 0 } on' App/Pane.swift | grep -o '"[A-Za-z]*"' | tr -d '"' | sort -u))
+(( ${#services} >= 20 )) || die "couldn't read the services Revoke resets out of App/Pane.swift (found ${#services})"
+unknown=()
+for service in $services; do
+	guest "tccutil reset $service $test_id" >/dev/null 2>&1 || unknown+=($service)
+done
+if (( ${#unknown} == 0 )); then pass "macOS knows all ${#services} services Revoke resets"; else fail "tccutil doesn't know: $unknown"; fi
+
+print "==> A link for the test app, while Revoke holds its links"
+open_link "$test_scheme://kept-out" No
+if got_link "$test_scheme://kept-out"; then fail "a link reached the app after No"; else pass "a link doesn't reach the app after No"; fi
+open_link "$test_scheme://let-in" Yes
+if got_link "$test_scheme://let-in"; then pass "a link reaches the app after Yes"; else fail "a link didn't reach the app after Yes"; fi
+if got_link "$test_scheme://kept-out"; then fail "the link kept out arrived later"; fi
+
+if [[ -z ${SKIP_TIME_LIMIT:-} ]]; then
+	print "==> The time limit, at its shortest ($limit_minutes minutes)"
+	set_column local-network localNetworkBlocked no
+	mac quit Revoke >/dev/null 2>&1 || true
+	sleep 1
+	# As Settings writes them when the limit is switched on.
+	guest "defaults write $defaults_domain revokeAfterLimit -bool true; defaults write $defaults_domain limitMinutes -int $limit_minutes; defaults write $defaults_domain limitStart -date \"\$(date -u '+%Y-%m-%d %H:%M:%S +0000')\""
+	start_revoke || die "Revoke's filter wasn't there after relaunching"
+	began=$(date +%s)
+	line=$(results)
+	expect "$line" lan_direct ok "the app has the local network while the limit runs"
+	print "  waiting out the $limit_minutes minutes"
+	sleep $(( limit_minutes * 60 - 60 - ($(date +%s) - began) ))
+	if [[ $(listed localNetworkBlocked) == no ]]; then pass "the app still has it a minute before the limit"; else fail "Local Network was blocked before the limit was up"; fi
+	blocked=no
+	while (( $(date +%s) - began < limit_minutes * 60 + limit_grace )); do
+		[[ $(listed localNetworkBlocked) == yes ]] && { blocked=yes; break; }
+		sleep 10
+	done
+	if [[ $blocked == yes ]]; then pass "Revoke blocked Local Network when the limit was up"; else fail "Revoke didn't block Local Network within $limit_grace seconds of the limit"; fi
+	line=$(results)
+	expect "$line" lan_direct no "the running app loses the local network at its limit"
+	if [[ $(listed linksBlocked) == yes && $(link_handler) == /Applications/Revoke.app ]]; then pass "Revoke still stands in for its links"; else fail "the links went back to the app at the limit"; fi
+	mac quit Revoke >/dev/null 2>&1 || true
+	sleep 1
+	guest "defaults delete $defaults_domain revokeAfterLimit; defaults delete $defaults_domain limitMinutes; defaults delete $defaults_domain limitStart" >/dev/null 2>&1 || true
+	start_revoke || die "Revoke's filter wasn't there after relaunching"
+fi
+
+print "==> Revoke --restore-links"
+said=$(restore_links No)
+if [[ $(link_handler) == /Applications/Revoke.app ]]; then pass "No leaves the links with Revoke"; else fail "the links moved after No (it said: ${said//$'\n'/ })"; fi
+said=$(restore_links Yes)
+if [[ $said == *"Gave back 1 link."* && $(link_handler) == $test_app ]]; then
+	pass "Yes gives the link back to the app"
+else
+	fail "the link wasn't given back after Yes (it said: ${said//$'\n'/ }; links open $(link_handler))"
+fi
+if guest "pgrep -x Revoke" >/dev/null 2>&1; then fail "Revoke was left running, and would take the links again"; else pass "and Revoke has quit, so it doesn't take them again"; fi
 
 print
 if (( failures == 0 )); then
