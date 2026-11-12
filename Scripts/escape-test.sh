@@ -27,6 +27,7 @@
 # - agent-guides' mac.sh (MAC_SH) and ssh to the VM as macos27 (MAC_HOST), as
 #   Scripts/screenshots.sh does. The VM needs the internet, for the two test hosts.
 # - Swift on this Mac, to build the test app in Scripts/escape-test.
+# - Nobody using the VM's screen meanwhile: the script clicks in it.
 #
 # It clicks the Watched row's switches by position, since macOS doesn't offer the panel's
 # switches to accessibility there, and checks each click against Revoke's own lists. If
@@ -47,6 +48,8 @@ test_id=com.example.revoke-escape-test
 test_app=/Applications/EscapeTest.app
 log=/tmp/revoke-escape-test.log
 defaults_domain=dev.benjweaver.Revoke
+# Longer than a run takes; cleanup ends it sooner.
+awake_seconds=3600
 
 mac() { zsh "$MAC_SH" "$@"; }
 guest() { ssh -o ConnectTimeout=15 -o ServerAliveInterval=5 "$host" "$@"; }
@@ -64,6 +67,7 @@ cleanup() {
 	local rc=$?
 	trap - EXIT INT TERM
 	print "==> Putting the VM back"
+	guest "pkill -f 'caffeinate -d -u -t $awake_seconds'" >/dev/null 2>&1 || true
 	guest "pkill -x EscapeTest; rm -rf $test_app $log $log.orphan /tmp/revoke-escape-app.zip /tmp/revoke-escape-test.zip" >/dev/null 2>&1 || true
 	# Lift whatever the run left, through the panel like everything else.
 	if panel_open 2>/dev/null; then
@@ -212,6 +216,10 @@ print "==> Starting the VM"
 mac up
 guest true || die "can't reach the VM as $host"
 mac prep light >/dev/null
+# The guest's display sleeps after ten idle minutes. Asleep, the panel's window reports
+# another rectangle and clicks do nothing, so it's held awake for the whole run, and a
+# key press wakes it if it had already gone.
+guest "(nohup caffeinate -d -u -t $awake_seconds >/dev/null 2>&1 &); sleep 1; /usr/local/bin/gui key shift" >/dev/null 2>&1 || true
 # Whatever the person watches, to put back afterward.
 saved_watched=$(guest "defaults read $defaults_domain watched 2>/dev/null" | tr -d '()\n' | sed 's/,/ /g; s/  */ /g') || true
 gateway=$(guest "route -n get default 2>/dev/null | awk '/gateway/ { print \$2 }'")
