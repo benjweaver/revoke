@@ -17,8 +17,8 @@ settings:
     DEVELOPMENT_TEAM: AR25V66TVY
     CODE_SIGN_STYLE: Automatic
     ENABLE_HARDENED_RUNTIME: YES
-    MARKETING_VERSION: "1.6.0"
-    CURRENT_PROJECT_VERSION: "21"
+    MARKETING_VERSION: "1.6.1"
+    CURRENT_PROJECT_VERSION: "22"
 targets:
   Revoke:
     type: application
@@ -79,7 +79,8 @@ targets:
         NSHumanReadableCopyright: "GPL-3.0-or-later"
         NSSystemExtensionUsageDescription: Keeps the apps you revoke in Revoke off your local network.
         NetworkExtension:
-          NEMachServiceName: AR25V66TVY.dev.benjweaver.Revoke.filter
+          # Ends in the build number: see FilterIdentity.machService.
+          NEMachServiceName: AR25V66TVY.dev.benjweaver.Revoke.filter.$(CURRENT_PROJECT_VERSION)
           NEProviderClasses:
             com.apple.networkextension.filter-data: $(PRODUCT_MODULE_NAME).FilterDataProvider
     settings:

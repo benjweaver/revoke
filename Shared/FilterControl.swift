@@ -37,7 +37,14 @@ enum FilterIdentity {
     static let extensionBundleID = "dev.benjweaver.Revoke.Filter"
     /// The filter's XPC service. A system extension's service has to start with one
     /// of its app groups, which in turn start with the team ID.
-    static let machService = "AR25V66TVY.dev.benjweaver.Revoke.filter"
+    ///
+    /// The name ends in the build number, which the app and the filter inside it
+    /// share. With one name for every build, a filter that takes over from an older
+    /// one can come up without its service: launchd won't give a new job a name the
+    /// old job still holds, and never offers it again. The filter then runs, deaf to
+    /// Revoke, until the Mac restarts.
+    static let machService = "AR25V66TVY.dev.benjweaver.Revoke.filter."
+        + (Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "0")
     /// Only Revoke itself, signed with this team's Developer ID, may change what the
     /// filter blocks. Otherwise any app could take itself off the list.
     static let client = """

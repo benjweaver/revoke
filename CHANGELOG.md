@@ -5,6 +5,16 @@ All notable changes are listed here. The format follows
 [Semantic Versioning](https://semver.org/). Each release's notes on GitHub come
 from its section below.
 
+## [1.6.1] - 2026-11-11
+
+### Fixed
+
+- After an update, the new network filter could come up unable to hear Revoke, so
+  switches for Local Network and Internet failed until the Mac restarted. The filter it
+  replaced still held the name of the service they shared, and macOS never gave it to
+  the new one. Each build's filter now has a service name of its own. The repair in
+  1.6.0, which started the filter again, didn't fix this and is gone.
+
 ## [1.6.0] - 2026-11-11
 
 ### Added
@@ -230,6 +240,7 @@ from its section below.
   deleted or replaced.
 - Apps from Anthropic and OpenAI are watched by default.
 
+[1.6.1]: https://github.com/benjweaver/revoke/releases/tag/v1.6.1
 [1.6.0]: https://github.com/benjweaver/revoke/releases/tag/v1.6.0
 [1.5.2]: https://github.com/benjweaver/revoke/releases/tag/v1.5.2
 [1.5.1]: https://github.com/benjweaver/revoke/releases/tag/v1.5.1
