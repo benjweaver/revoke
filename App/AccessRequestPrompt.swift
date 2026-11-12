@@ -53,8 +53,13 @@ final class AccessRequestPrompt {
             apps = [claimed]
             isClaimed = true
         }
-        waiting.append((request, apps, isClaimed, answer))
-        askNext()
+        // Whether there's anything to allow depends on what the filter holds back
+        // right now, not on what it held when the panel last looked.
+        Task {
+            await model.refreshFilterLists()
+            waiting.append((request, apps, isClaimed, answer))
+            askNext()
+        }
     }
 
     private func askNext() {

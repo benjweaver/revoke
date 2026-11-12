@@ -14,6 +14,9 @@ from its section below.
   replaced still held the name of the service they shared, and macOS never gave it to
   the new one. Each build's filter now has a service name of its own. The repair in
   1.6.0, which started the filter again, didn't fix this and is gone.
+- A request for network access could be ignored as "not limited" just after an earlier
+  allowance ran out, because Revoke's copy of the filter's lists was out of date. It
+  reads them again before deciding.
 
 ## [1.6.0] - 2026-11-11
 

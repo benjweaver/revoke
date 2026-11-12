@@ -378,6 +378,15 @@ final class AccessModel: ObservableObject {
         revoke(clients ?? leftoverRows.map(\.client), panes: Pane.allCases.filter { $0.tccService != nil } + [.other], reason: nil)
     }
 
+    /// Reads the filter's lists now, for something that has to act on them as they
+    /// are. The panel's copy goes stale when an allowance runs out: the filter takes
+    /// access back by itself, and Revoke may have been started since it was given.
+    func refreshFilterLists() async {
+        guard filter.isOn else { return }
+        if case .success(let limited) = await filter.limited() { settings.adoptInternetLimited(limited) }
+        if case .success(let blocked) = await filter.blocked() { settings.adoptLocalNetworkBlocked(blocked) }
+    }
+
     /// Shows the network filter's own list of blocked apps in the panel.
     private func readFilterBlocklist() {
         enqueue {
