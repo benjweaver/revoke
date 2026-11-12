@@ -5,6 +5,20 @@ All notable changes are listed here. The format follows
 [Semantic Versioning](https://semver.org/). Each release's notes on GitHub come
 from its section below.
 
+## [Unreleased]
+
+### Added
+
+- `Scripts/escape-test.sh` tries to get around a build before it's released, in the
+  macOS 27 VM: it updates from the last release and checks the filter still answers,
+  then blocks a test app and tries the local network and the internet every way it can.
+
+### Fixed
+
+- The Local Network switch couldn't block an app macOS has no Local Network entry for,
+  such as one that never asked: it showed off, and switching it meant allow. With the
+  filter on it now shows on, and switching it off blocks the app.
+
 ## [1.6.1] - 2026-11-11
 
 ### Fixed

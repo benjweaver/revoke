@@ -18,6 +18,8 @@ struct Row: Identifiable {
     let isBlockedFromLocalNetwork: Bool
     /// Revoke's network filter is keeping the app to its model provider's hosts.
     let isInternetLimited: Bool
+    /// The network filter is on, so Revoke can block the local network itself.
+    let canBlockLocalNetwork: Bool
     /// The app, its helpers, or something they started is running.
     let isRunning: Bool
 
@@ -26,6 +28,9 @@ struct Row: Identifiable {
     func isAllowed(_ pane: Pane) -> Bool {
         if pane == .running { return isRunning }
         if pane == .localNetwork && isBlockedFromLocalNetwork { return false }
+        // An app macOS has no Local Network entry for was never asked, or isn't one
+        // macOS asks: it reaches the network all the same, and Revoke can block it.
+        if pane == .localNetwork && canBlockLocalNetwork && client.bundleID != nil && entries[pane] == nil { return true }
         // The whole internet is what an app has unless Revoke limits it.
         if pane == .internet { return !isInternetLimited }
         return entries[pane]?.access == .allowed
@@ -239,6 +244,7 @@ final class AccessModel: ObservableObject {
                 entries: entries, deadline: deadline(for: entries),
                 isBlockedFromLocalNetwork: isBlockedFromLocalNetwork(client),
                 isInternetLimited: isInternetLimited(client),
+                canBlockLocalNetwork: filter.isOn,
                 isRunning: client.bundleID.map { runningAppIDs.contains($0) || stoppableIDs.contains($0) } ?? false)
         }
         .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
@@ -313,7 +319,7 @@ final class AccessModel: ObservableObject {
         } else if pane == .localNetwork, filter.isOn, let id = client.bundleID {
             setLocalNetworkBlocked(!on, for: [id])
             // macOS's own switch has to be on too.
-            if on, snapshot.entries[client]?[.localNetwork]?.access != .allowed, let url = pane.settingsURL {
+            if on, snapshot.entries[client]?[.localNetwork]?.access == .denied, let url = pane.settingsURL {
                 NSWorkspace.shared.open(url)
             }
         } else if !on, !pane.tccutilServices.isEmpty, client.bundleID != nil {
@@ -349,7 +355,8 @@ final class AccessModel: ObservableObject {
             if on {
                 let unblocked = ids.filter(settings.localNetworkBlocked.contains)
                 if !unblocked.isEmpty { setLocalNetworkBlocked(false, for: unblocked) }
-                if !clients.contains(where: { snapshot.entries[$0]?[.localNetwork]?.access == .allowed }),
+                if clients.contains(where: { snapshot.entries[$0]?[.localNetwork]?.access == .denied }),
+                   !clients.contains(where: { snapshot.entries[$0]?[.localNetwork]?.access == .allowed }),
                    let url = pane.settingsURL {
                     NSWorkspace.shared.open(url)
                 }
@@ -591,7 +598,7 @@ final class AccessModel: ObservableObject {
             } else if panes.contains(where: {
                 before.entries[client]?[$0]?.access == .allowed && snapshot.entries[client]?[$0]?.access != .allowed
             }) || client.bundleID.map(newlyBlocked.contains) == true
-                && before.entries[client]?[.localNetwork]?.access == .allowed {
+                && before.entries[client]?[.localNetwork]?.access != .denied {
                 revoked.append(AppInfo.name(client))
             }
         }
