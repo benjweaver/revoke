@@ -33,7 +33,7 @@ left on, set **Menu bar lock opens** in Settings to **Only while a watched app i
 | Local Network | The app can reach devices on your network, or they can connect to it | Blocks both with Revoke's network filter (below) |
 | Links | Web pages, emails, documents, and other apps can open it with a link (`claude://`, `codex://`, `claude-cli://`, `cursor://`, `antigravity://`, `dsh://`) or a file (`.skill`, `.mcpb`) | Revoke opens instead, shows you the whole link and who sent it, and opens the app only if you say so (below) |
 | Other | A menu rather than a switch: what the app can ask for that macOS doesn't let Revoke see (below) | Choose one to reset it with `tccutil`, or all of them |
-| All Access | Any of the app's access switches is on | Switches off every access switch the app has, Links included, and resets Other, leaving Running as it is |
+| Revoke | A button, live while any of the app's access switches is on | Switches off every access switch the app has, Links included, and resets Other, leaving Running as it is |
 
 The **Watched** header row has a switch for each column too, to toggle that column across every watched app at once.
 
@@ -258,6 +258,11 @@ For Local Network, yes lets the app through for that long, and then the filter b
 it again by itself, even if Revoke has quit by then. `internet` works the same way for
 an app limited to its model: the whole internet for that long, then the limit again. For the rest, only System Settings
 can grant access, so yes opens the right pane for you to switch it on.
+
+While access is on for now, the panel says so: the switch shows a clock and the time
+left in place of its knob, the app's row says when it ends, and a strip at the top
+lists everything that's on for now. **End Now** there, or switching the switch off,
+takes it back without waiting.
 
 Revoke works out who's asking from the process that opened the link and the apps it
 runs inside, not from the link, so one app can't ask in another's name. After a no,

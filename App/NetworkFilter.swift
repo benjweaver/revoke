@@ -156,6 +156,24 @@ final class NetworkFilter: NSObject, ObservableObject {
         await call { $0.allowInternet(identifiers, minutes: minutes, reply: $1) }
     }
 
+    /// When each allowance given for a while ends, or nil when the filter didn't say:
+    /// it's off, or it's an older build that doesn't know the question. Asked once,
+    /// since the panel asks again each time it opens.
+    func allowances() async -> Allowances? {
+        guard isOn else { return nil }
+        let connection = self.connection ?? connect()
+        return await withCheckedContinuation { continuation in
+            // XPC calls exactly one of the two handlers, on its own queue.
+            let onError: @Sendable (Error) -> Void = { _ in continuation.resume(returning: nil) }
+            guard let proxy = connection.remoteObjectProxyWithErrorHandler(onError) as? FilterControl else {
+                return continuation.resume(returning: nil)
+            }
+            proxy.getAllowances { local, internet in
+                continuation.resume(returning: Allowances(localNetwork: local, internet: internet))
+            }
+        }
+    }
+
     /// Sends one request and waits for the filter's answer. When the connection was
     /// dropped, as when the extension restarts with the filter, it's made again and
     /// the request sent once more.

@@ -17,8 +17,8 @@ settings:
     DEVELOPMENT_TEAM: AR25V66TVY
     CODE_SIGN_STYLE: Automatic
     ENABLE_HARDENED_RUNTIME: YES
-    MARKETING_VERSION: "1.6.3"
-    CURRENT_PROJECT_VERSION: "29"
+    MARKETING_VERSION: "1.7.0"
+    CURRENT_PROJECT_VERSION: "33"
 targets:
   Revoke:
     type: application
@@ -96,7 +96,7 @@ targets:
   RevokeTests:
     type: bundle.unit-test
     platform: macOS
-    sources: [Tests, Shared/InternetHosts.swift, Filter/LocalNetwork.swift, App/AccessRequest.swift, App/Links.swift, App/Pane.swift, App/PanelLayout.swift, App/TCCDatabase.swift]
+    sources: [Tests, Shared/InternetHosts.swift, Filter/LocalNetwork.swift, App/AccessRequest.swift, App/Allowances.swift, App/Links.swift, App/Pane.swift, App/PanelLayout.swift, App/TCCDatabase.swift]
     dependencies:
       - target: Revoke
         embed: false

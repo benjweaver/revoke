@@ -31,6 +31,11 @@ protocol FilterControl {
     /// Gives limited apps the whole internet for a while. The filter brings the limit
     /// back itself when the time is up.
     func allowInternet(_ identifiers: [String], minutes: Int, reply: @escaping @Sendable ([String]) -> Void)
+
+    /// When each allowance given for a while ends, by code-signing identifier: first
+    /// the blocked apps let onto the local network, then the limited apps given the
+    /// whole internet. The panel shows these, so on-for-now doesn't look like on.
+    func getAllowances(reply: @escaping @Sendable ([String: Date], [String: Date]) -> Void)
 }
 
 enum FilterIdentity {

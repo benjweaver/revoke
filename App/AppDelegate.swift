@@ -139,10 +139,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Task { await model.refreshFilterLists() }
         // Fit the screen whose menu bar was clicked: on one narrower than the panel,
         // macOS would otherwise cut off its right edge.
-        let screenWidth = (button.window?.screen ?? NSScreen.main)?.visibleFrame.width ?? PanelLayout.preferredWidth
-        let width = PanelLayout.width(forScreenWidth: screenWidth)
-        if let panel, panel.rootView.width != width {
-            panel.rootView = makePanel(width: width)
+        let screen = (button.window?.screen ?? NSScreen.main)?.visibleFrame
+        let width = PanelLayout.width(forScreenWidth: screen?.width ?? PanelLayout.preferredWidth)
+        let maxHeight = screen.map { PanelLayout.maxHeight(forScreenHeight: $0.height) } ?? .infinity
+        if let panel, panel.rootView.width != width || panel.rootView.maxHeight != maxHeight {
+            panel.rootView = makePanel(width: width, maxHeight: maxHeight)
         }
         NSApp.activate()
         popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
@@ -160,8 +161,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    private func makePanel(width: CGFloat) -> PanelView {
-        PanelView(model: model, settings: settings, filter: filter, width: width) { [weak self] in
+    private func makePanel(width: CGFloat, maxHeight: CGFloat = .infinity) -> PanelView {
+        PanelView(model: model, settings: settings, filter: filter, width: width, maxHeight: maxHeight) { [weak self] in
             self?.showSettings()
         }
     }

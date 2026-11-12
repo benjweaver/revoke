@@ -5,6 +5,33 @@ All notable changes are listed here. The format follows
 [Semantic Versioning](https://semver.org/). Each release's notes on GitHub come
 from its section below.
 
+## [1.7.0] - Unreleased
+
+### Added
+
+- Access you gave for a while, by saying yes when an app asked, no longer looks like a
+  switch left on. Its switch shows a clock and the time left, the app's row says when
+  it ends, and a strip at the top of the panel lists everything that's on for now with
+  an End Now button. Switching it off ends it too.
+- The panel's columns are grouped by how they behave: what only macOS can grant, what
+  Revoke keeps itself and switches both ways, and what only takes access away. A key
+  under the panel says what each shape of switch means.
+- The Watched row says how many apps it covers, and a switch that's on for only some
+  of them sits in the middle and says for how many.
+
+### Changed
+
+- All Access is a Revoke button in each row, since it could only ever switch off.
+- A switch that's on and that only System Settings can change has a lock on it.
+- The panel has a solid background. It was see-through, and in the light appearance
+  over a dark desktop it went mid-gray with the app names gray on gray.
+- Small gray text in the panel was about 4:1 against its background, and the white on
+  the blue button the same. Both are darker now: the lowest measured is 5.8:1 in the
+  light appearance and 6.7:1 in the dark.
+- On a screen too short for it, the panel scrolls. macOS used to push its top, with
+  the title and Settings, off the screen.
+- The sentence about System Settings under the panel is gone: the column groups say it.
+
 ## [1.6.3] - 2026-11-11
 
 ### Added
@@ -284,6 +311,7 @@ from its section below.
   deleted or replaced.
 - Apps from Anthropic and OpenAI are watched by default.
 
+[1.7.0]: https://github.com/benjweaver/revoke/releases/tag/v1.7.0
 [1.6.3]: https://github.com/benjweaver/revoke/releases/tag/v1.6.3
 [1.6.2]: https://github.com/benjweaver/revoke/releases/tag/v1.6.2
 [1.6.1]: https://github.com/benjweaver/revoke/releases/tag/v1.6.1

@@ -47,7 +47,7 @@
 #   limited along with it, have their Other access reset, and come out with Local
 #   Network and the internet allowed, whatever they had before.
 #
-# It clicks the Watched row's switches by position, since macOS doesn't offer the panel's
+# It clicks the summary row's switches by position, since macOS doesn't offer the panel's
 # switches to accessibility there, and checks each click against Revoke's own lists. If
 # the panel's layout changes, the offsets in `column` and `header_y` are what to update.
 #
@@ -176,11 +176,14 @@ column() {
 	esac
 	print $(( $2 + $3 - 14 - 16 - 27 - 60 * from_right ))
 }
-# The Watched row's switches sit this far below the top of the panel's window, shadow
-# included, while the status under the title is one line.
-header_y=144
+# The summary row's switches sit this far below the top of the panel's window, shadow
+# included, while the status under the title is one line and nothing is on for now:
+# the strip that lists timed access pushes the grid down, so the run only clicks once
+# an allowance it asked for has ended.
+header_y=193
 
-# Clicks the Watched row's switch in a column, which acts on every watched app.
+# Clicks the summary row's switch in a column, which acts on every watched app. The
+# last column is the Revoke button.
 click_header() {
 	local rect x y
 	rect=($(panel_rect)) || die "Revoke's panel isn't on screen"

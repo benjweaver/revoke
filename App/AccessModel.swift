@@ -22,8 +22,20 @@ struct Row: Identifiable {
     let canBlockLocalNetwork: Bool
     /// The app, its helpers, or something they started is running.
     let isRunning: Bool
+    /// When the local network or the whole internet, given for a while, ends.
+    var localNetworkUntil: Date?
+    var internetUntil: Date?
 
     var id: Client { client }
+
+    /// When this access ends, if it's on only for now.
+    func allowedUntil(_ pane: Pane) -> Date? {
+        switch pane {
+        case .localNetwork: localNetworkUntil
+        case .internet: internetUntil
+        default: nil
+        }
+    }
 
     func isAllowed(_ pane: Pane) -> Bool {
         if pane == .running { return isRunning }
@@ -61,6 +73,12 @@ final class AccessModel: ObservableObject {
     /// The same, with helpers counted as the app they're inside, so the status says
     /// "Claude is running" rather than "Claude and Claude Helper are running".
     @Published private(set) var runningAppIDs = Set<String>()
+
+    /// Access that's on only for now, as the filter last reported it.
+    @Published private(set) var allowances = Allowances()
+    /// The time the panel counts minutes from. It moves while something is on for now.
+    @Published private(set) var clock = Date()
+    private var allowanceTimer: Timer?
 
     private let settings: Settings
     let filter: NetworkFilter
@@ -245,7 +263,9 @@ final class AccessModel: ObservableObject {
                 isBlockedFromLocalNetwork: isBlockedFromLocalNetwork(client),
                 isInternetLimited: isInternetLimited(client),
                 canBlockLocalNetwork: filter.isOn,
-                isRunning: client.bundleID.map { runningAppIDs.contains($0) || stoppableIDs.contains($0) } ?? false)
+                isRunning: client.bundleID.map { runningAppIDs.contains($0) || stoppableIDs.contains($0) } ?? false,
+                localNetworkUntil: client.bundleID.flatMap { allowances.localNetwork[$0] },
+                internetUntil: client.bundleID.flatMap { allowances.internet[$0] })
         }
         .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
     }
@@ -392,6 +412,34 @@ final class AccessModel: ObservableObject {
         guard filter.isOn else { return }
         if case .success(let limited) = await filter.limited() { settings.adoptInternetLimited(limited) }
         if case .success(let blocked) = await filter.blocked() { settings.adoptLocalNetworkBlocked(blocked) }
+        await readAllowances()
+    }
+
+    /// Reads when each allowance ends, and keeps the minutes moving until the last one
+    /// has. When one ends, the filter's lists have changed too, so those are read again.
+    private func readAllowances() async {
+        let now = Date()
+        let read = (await filter.allowances() ?? Allowances()).inForce(at: now)
+        if read != allowances { allowances = read }
+        clock = now
+        allowanceTimer?.invalidate()
+        allowanceTimer = nil
+        guard let end = read.nextEnd else { return }
+        // Each half minute, or just after the first one ends, whichever comes first.
+        let wake = min(end.addingTimeInterval(1), now.addingTimeInterval(30))
+        let timer = Timer(fire: wake, interval: 0, repeats: false) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                if Date() >= end { self.readFilterBlocklist() } else { Task { await self.readAllowances() } }
+            }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        allowanceTimer = timer
+    }
+
+    /// Ends access that's on for now, as the person asked: the same as switching it off.
+    func endAllowance(_ pane: Pane, for client: Client) {
+        set(pane, on: false, for: client)
     }
 
     /// Shows the network filter's own list of blocked apps in the panel.
@@ -400,9 +448,11 @@ final class AccessModel: ObservableObject {
             if case .success(let limited) = await self.filter.limited() {
                 self.settings.adoptInternetLimited(limited)
             }
+            await self.readAllowances()
             switch await self.filter.blocked() {
             case .success(let list):
                 self.settings.adoptLocalNetworkBlocked(list)
+                await self.readAllowances()
             case .failure(let error):
                 let text = "Couldn't read which apps the network filter blocks: \(error.localizedDescription)"
                 log.error("\(text, privacy: .public)")
@@ -422,6 +472,7 @@ final class AccessModel: ObservableObject {
             switch result {
             case .success(let list):
                 self.settings.adoptLocalNetworkBlocked(list)
+                await self.readAllowances()
                 text = block ? "Blocked Local Network for \(names)" : "Stopped blocking Local Network for \(names)"
             case .failure(let error):
                 text = "Couldn't \(block ? "block" : "stop blocking") Local Network for \(names): \(error.localizedDescription)"
@@ -444,6 +495,7 @@ final class AccessModel: ObservableObject {
             switch await self.filter.allow(ids, minutes: minutes) {
             case .success(let list):
                 self.settings.adoptLocalNetworkBlocked(list)
+                await self.readAllowances()
                 text = "Allowed Local Network for \(name) for \(duration), as you said"
                 let timer = Timer(timeInterval: TimeInterval(minutes * 60) + 1, repeats: false) { _ in
                     MainActor.assumeIsolated { self.readFilterBlocklist() }
@@ -485,6 +537,7 @@ final class AccessModel: ObservableObject {
             switch result {
             case .success(let list):
                 self.settings.adoptInternetLimited(list)
+                await self.readAllowances()
                 if !limit {
                     text = "\(name) can reach the whole internet again"
                 } else if hosts.isEmpty {
@@ -511,6 +564,7 @@ final class AccessModel: ObservableObject {
             switch await self.filter.allowInternet(ids, minutes: minutes) {
             case .success(let list):
                 self.settings.adoptInternetLimited(list)
+                await self.readAllowances()
                 text = "Allowed the whole internet for \(name) for \(duration), as you said"
                 let timer = Timer(timeInterval: TimeInterval(minutes * 60) + 1, repeats: false) { _ in
                     MainActor.assumeIsolated { self.readFilterBlocklist() }

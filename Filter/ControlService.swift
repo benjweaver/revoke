@@ -168,6 +168,17 @@ final class ControlService: NSObject, NSXPCListenerDelegate, FilterControl, @unc
         reply(list)
     }
 
+    func getAllowances(reply: @escaping @Sendable ([String: Date], [String: Date]) -> Void) {
+        let now = Date()
+        let local = lists.withLock { lists in
+            lists.allowedUntil.filter { $0.value > now && lists.blocked.contains($0.key) }
+        }
+        let internet = limits.withLock { limits in
+            limits.openUntil.filter { $0.value > now && limits.hosts[$0.key] != nil }
+        }
+        reply(local, internet)
+    }
+
     /// Changes the limits and saves them. Returns the apps limited at this moment.
     private func changeLimits(_ body: (inout Limits) -> Void) -> [String] {
         let (list, flipped) = limits.withLock { limits in

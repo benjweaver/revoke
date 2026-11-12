@@ -1,4 +1,5 @@
 import CoreGraphics
+import Foundation
 import Testing
 
 /// The panel keeps its full width on ordinary screens and narrows to fit small ones.
@@ -15,6 +16,51 @@ struct PanelLayoutTests {
         #expect(width < 800)
         #expect(width + 2 * PanelLayout.screenMargin <= 800)
         #expect(width >= PanelLayout.minimumWidth)
+    }
+
+    @Test func theGroupsCoverEveryColumnInOrder() {
+        #expect(PanelLayout.groups.map(\.columns).reduce(0, +) == PanelLayout.columnCount)
+        // Running alone, then what only macOS grants, then Revoke's own, then Other and Revoke.
+        let panes = Pane.allCases
+        #expect(panes.first == .running)
+        #expect(Array(panes[1..<5]).allSatisfy { $0.tccService != nil })
+        #expect(Array(panes[5..<8]) == [.localNetwork, .internet, .links])
+        #expect(panes[8] == .other)
+        #expect(PanelLayout.width(ofColumns: 1) == PanelLayout.columnWidth)
+        #expect(PanelLayout.width(ofColumns: 3) == 3 * PanelLayout.columnWidth + 2 * PanelLayout.columnSpacing)
+    }
+
+    @Test func timeLeftReadsShortInASwitchAndInFullWhenSpoken() {
+        let now = Date(timeIntervalSince1970: 1_000_000)
+        #expect(Allowances.minutesLeft(until: now.addingTimeInterval(38 * 60), now: now) == 38)
+        #expect(Allowances.minutesLeft(until: now.addingTimeInterval(20), now: now) == 1)
+        #expect(Allowances.minutesLeft(until: now.addingTimeInterval(61), now: now) == 2)
+        #expect(Allowances.minutesLeft(until: now.addingTimeInterval(-5), now: now) == 1)
+        #expect(Allowances.compact(minutes: 38) == "38m")
+        #expect(Allowances.compact(minutes: 99) == "99m")
+        #expect(Allowances.compact(minutes: 100) == "2h")
+        #expect(Allowances.compact(minutes: 240) == "4h")
+        #expect(Allowances.spoken(minutes: 1) == "1 minute")
+        #expect(Allowances.spoken(minutes: 38) == "38 minutes")
+        #expect(Allowances.spoken(minutes: 60) == "1 hour")
+        #expect(Allowances.spoken(minutes: 125) == "2 hours 5 minutes")
+    }
+
+    @Test func allowancesDropWhatHasEnded() {
+        let now = Date(timeIntervalSince1970: 1_000_000)
+        let all = Allowances(localNetwork: ["com.example.a": now.addingTimeInterval(-1)],
+                             internet: ["com.example.a": now.addingTimeInterval(600), "com.example.b": now.addingTimeInterval(60)])
+        let left = all.inForce(at: now)
+        #expect(left.localNetwork.isEmpty && left.internet.count == 2 && !left.isEmpty)
+        #expect(left.nextEnd == now.addingTimeInterval(60))
+        #expect(Allowances().isEmpty && Allowances().nextEnd == nil)
+    }
+
+    @Test func staysOnAShortScreen() {
+        // A virtual machine's 500-point screen leaves 476 under the menu bar.
+        #expect(PanelLayout.maxHeight(forScreenHeight: 476) < 476)
+        #expect(PanelLayout.maxHeight(forScreenHeight: 900) == 900 - PanelLayout.screenMargin)
+        #expect(PanelLayout.maxHeight(forScreenHeight: 100) == 240)
     }
 
     @Test func neverNarrowerThanItsColumns() {
