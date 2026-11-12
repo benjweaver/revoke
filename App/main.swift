@@ -41,6 +41,38 @@ if CommandLine.arguments.contains("--restore-links") {
     RunLoop.main.run()
 }
 
+// `Revoke --request "revoke://request?access=internet&minutes=10&reason=…"` asks the
+// person for access and waits for their answer: it prints yes, no, or ignored, and
+// exits 0 only for yes. An agent should ask this way rather than with `open`, which
+// exits before Revoke can see which app ran it. This command stays, so Revoke can.
+if let flag = CommandLine.arguments.firstIndex(of: "--request") {
+    func fail(_ message: String) -> Never {
+        FileHandle.standardError.write(Data("Revoke: \(message)\n".utf8))
+        exit(2)
+    }
+    guard CommandLine.arguments.count > flag + 1, let url = URL(string: CommandLine.arguments[flag + 1]),
+          AccessRequest(url: url) != nil else {
+        fail("that isn't a request. Try: Revoke --request \"revoke://request?access=local-network&minutes=15&reason=Why\"")
+    }
+    let me = Bundle.main.bundleIdentifier ?? ""
+    if NSRunningApplication.runningApplications(withBundleIdentifier: me).allSatisfy({ $0 == .current }) {
+        fail("Revoke isn't running, so there's nobody to ask.")
+    }
+    let center = DistributedNotificationCenter.default()
+    let pid = getpid()
+    _ = center.addObserver(forName: AccessRequestPrompt.answered, object: "\(pid)", queue: .main) { notification in
+        let answer = notification.userInfo?["answer"] as? String ?? "ignored"
+        print(answer)
+        exit(answer == "yes" ? 0 : 1)
+    }
+    center.postNotificationName(AccessRequestPrompt.asked, object: nil,
+                                userInfo: ["url": url.absoluteString, "pid": NSNumber(value: pid)],
+                                deliverImmediately: true)
+    // Long enough for someone to come back to the Mac and read the question.
+    RunLoop.main.run(until: Date().addingTimeInterval(10 * 60))
+    fail("nobody answered.")
+}
+
 let delegate = AppDelegate()
 NSApplication.shared.delegate = delegate
 NSApplication.shared.setActivationPolicy(.accessory)

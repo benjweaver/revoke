@@ -16,6 +16,8 @@ struct Row: Identifiable {
     /// Revoke's network filter is keeping the app off the local network, whatever
     /// macOS's own Local Network switch says.
     let isBlockedFromLocalNetwork: Bool
+    /// Revoke's network filter is keeping the app to its model provider's hosts.
+    let isInternetLimited: Bool
     /// The app, its helpers, or something they started is running.
     let isRunning: Bool
 
@@ -24,6 +26,8 @@ struct Row: Identifiable {
     func isAllowed(_ pane: Pane) -> Bool {
         if pane == .running { return isRunning }
         if pane == .localNetwork && isBlockedFromLocalNetwork { return false }
+        // The whole internet is what an app has unless Revoke limits it.
+        if pane == .internet { return !isInternetLimited }
         return entries[pane]?.access == .allowed
     }
 
@@ -234,6 +238,7 @@ final class AccessModel: ObservableObject {
             Row(client: client, name: AppInfo.name(client), icon: AppInfo.icon(client),
                 entries: entries, deadline: deadline(for: entries),
                 isBlockedFromLocalNetwork: isBlockedFromLocalNetwork(client),
+                isInternetLimited: isInternetLimited(client),
                 isRunning: client.bundleID.map { runningAppIDs.contains($0) || stoppableIDs.contains($0) } ?? false)
         }
         .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
@@ -301,6 +306,8 @@ final class AccessModel: ObservableObject {
     func set(_ pane: Pane, on: Bool, for client: Client) {
         if pane == .running {
             if on { open(client) } else { stop(client) }
+        } else if pane == .internet {
+            setInternetLimited(!on, for: client)
         } else if pane == .links {
             if on { giveLinksBack([client]) } else { revoke([client], panes: [.links], reason: nil) }
         } else if pane == .localNetwork, filter.isOn, let id = client.bundleID {
@@ -320,6 +327,12 @@ final class AccessModel: ObservableObject {
     func set(_ pane: Pane, on: Bool, forWatched rows: [Row]) {
         if pane == .running {
             if !on { stopAll() }
+        } else if pane == .internet {
+            // On gives the whole internet back to those that are limited; off limits
+            // every watched app, each to its own developer's hosts.
+            for row in rows where row.client.bundleID != nil && row.isInternetLimited == on {
+                setInternetLimited(!on, for: row.client)
+            }
         } else if pane == .links {
             if on {
                 let blocked = rows.map(\.client).filter {

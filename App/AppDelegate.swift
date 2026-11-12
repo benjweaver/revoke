@@ -28,6 +28,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         requests = AccessRequestPrompt(settings: settings, model: model)
         super.init()
         prompt.onActivity = { [weak model] in model?.note($0) }
+        requests.listenForCommands()
     }
 
     /// macOS opened Revoke for a link or a file it stands in for, or for a revoke://

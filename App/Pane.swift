@@ -10,6 +10,9 @@ enum Pane: CaseIterable, Identifiable {
     case inputMonitoring
     case fullDiskAccess
     case localNetwork
+    /// The whole internet, or only the app's model provider: Revoke's own, kept by its
+    /// network filter.
+    case internet
     /// Whether other apps can open the app with a link or a file, or Revoke asks first.
     case links
     /// Automation, the camera and microphone, files and folders, and the rest, which
@@ -19,8 +22,10 @@ enum Pane: CaseIterable, Identifiable {
     var id: Self { self }
 
     /// The columns that are access, which Revoke All Watched and the automatic options
-    /// take away. Running isn't: stopping apps is Stop App's job.
-    static let access = allCases.filter { $0 != .running }
+    /// take away. Running isn't: stopping apps is Stop App's job. Nor is Internet: an
+    /// agent kept to its model can't search or fetch, so that's a choice per app, not
+    /// something a revocation does while nobody's looking.
+    static let access = allCases.filter { $0 != .running && $0 != .internet }
 
     /// Whether an app has any access switch on that Revoke can turn off.
     static func hasRevocableAccess(
@@ -51,6 +56,7 @@ enum Pane: CaseIterable, Identifiable {
         case .inputMonitoring: "Input Monitoring"
         case .fullDiskAccess: "Full Disk Access"
         case .localNetwork: "Local Network"
+        case .internet: "Internet"
         case .links: "Links"
         case .other: "Other access"
         }
@@ -64,6 +70,7 @@ enum Pane: CaseIterable, Identifiable {
         case .inputMonitoring: "Input"
         case .fullDiskAccess: "Full Disk"
         case .localNetwork: "Local Network"
+        case .internet: "Internet"
         case .links: "Links"
         case .other: "Other"
         }
@@ -84,6 +91,8 @@ enum Pane: CaseIterable, Identifiable {
             "\(title): lets the app read and change all your files, including Mail, Messages, Safari, and other apps' data."
         case .localNetwork:
             "\(title): lets the app reach devices on your network, such as routers, printers, and other computers, and lets them reach it."
+        case .internet:
+            "\(title): lets the app reach anywhere on the internet. Off, Revoke keeps it to its model provider's own hosts, and the ones you add in Settings, so it can't fetch from or post to anywhere else."
         case .links:
             "\(title): lets web pages, emails, documents, and other apps open the app with a link or a file, which can carry instructions for it. Off, Revoke asks you first."
         case .other:
@@ -99,6 +108,7 @@ enum Pane: CaseIterable, Identifiable {
         case .inputMonitoring: "keyboard"
         case .fullDiskAccess: "internaldrive"
         case .localNetwork: "network"
+        case .internet: "globe"
         case .links: "link"
         case .other: "ellipsis.circle"
         }
@@ -112,7 +122,7 @@ enum Pane: CaseIterable, Identifiable {
         case .screenRecording: "kTCCServiceScreenCapture"
         case .inputMonitoring: "kTCCServiceListenEvent"
         case .fullDiskAccess: "kTCCServiceSystemPolicyAllFiles"
-        case .running, .localNetwork, .links, .other: nil
+        case .running, .localNetwork, .internet, .links, .other: nil
         }
     }
 
@@ -140,7 +150,7 @@ enum Pane: CaseIterable, Identifiable {
         case .inputMonitoring: ["ListenEvent"]
         case .fullDiskAccess: ["SystemPolicyAllFiles"]
         case .other: OtherAccess.allCases.flatMap(\.tccutilServices)
-        case .running, .localNetwork, .links: []
+        case .running, .localNetwork, .internet, .links: []
         }
     }
 
@@ -154,7 +164,7 @@ enum Pane: CaseIterable, Identifiable {
         case .fullDiskAccess: "Privacy_AllFiles"
         case .localNetwork: "Privacy_LocalNetwork"
         case .other: ""
-        case .running, .links: nil as String?
+        case .running, .internet, .links: nil as String?
         }
         guard let anchor else { return nil }
         return URL(string: "x-apple.systempreferences:com.apple.preference.security?\(anchor)")!

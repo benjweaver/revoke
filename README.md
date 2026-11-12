@@ -196,17 +196,19 @@ add blocks.
 ## Limiting the internet to an app's model
 
 An agent needs its model provider's servers to work at all, and for most jobs nothing
-else on the internet. Right-click a watched app in the panel and choose **Limit Internet
-to Its Model**: the filter then drops the app's connections to the internet, commands
-it starts included, except to its developer's own hosts and any you add in Settings.
-Its row says "Internet: its model only". The local network isn't part of this; it keeps
-its own switch.
+else on the internet. Switch an app's **Internet** off in the panel: the filter then
+drops the app's connections to the internet, commands it starts included, except to
+its developer's own hosts and any you add in Settings. The switch's tooltip lists them.
+The local network isn't part of this; it keeps its own switch. Revoke All Watched and
+the automatic options leave Internet alone, since an agent kept to its model can't
+search or fetch.
 
-- **Built-in hosts** cover Anthropic (`anthropic.com`, `claude.ai`, `claude.com`),
+- **Built-in hosts** cover Anthropic (`anthropic.com`, `claude.ai`, `claude.com`,
+  `claudeusercontent.com`),
   OpenAI, Cursor, and DeepSeek, subdomains included. Other apps start with none, so
   add their model's hosts in Settings first.
 - **Hosts you add** in Settings apply to every limited app, and take effect the next
-  time you limit one.
+  time you switch an app's Internet off.
 - **What stops working** is everything else the app does online: web search, `git
   push`, `npm install`, update checks, telemetry, and MCP servers that call out. The
   app can ask for the whole internet for a while (see below).
@@ -224,11 +226,16 @@ whose it is, and lets everything from other apps straight through.
 ## Asking for access
 
 An agent that finds something blocked can ask you for it instead of working around the
-block, by opening a link:
+block:
 
 ```bash
-open "revoke://request?access=local-network&minutes=15&reason=Reach%20the%20test%20VM"
+/Applications/Revoke.app/Contents/MacOS/Revoke --request "revoke://request?access=local-network&minutes=15&reason=Reach%20the%20test%20VM"
 ```
+
+The command waits for your answer, prints `yes`, `no`, or `ignored`, and exits 0 only
+for yes. Opening the same link with `open` works too, but `open` has usually exited by
+the time Revoke looks for who ran it, and a request Revoke can't trace is ignored unless
+it names an app.
 
 Revoke shows which app is asking, for what, for how long, and the reason in the app's
 own words. No is the default, and nothing changes unless you say yes.
@@ -247,8 +254,7 @@ can grant access, so yes opens the right pane for you to switch it on.
 
 Revoke works out who's asking from the process that opened the link and the apps it
 runs inside, not from the link, so one app can't ask in another's name. After a no,
-the same request from the same app is ignored for a minute. The link gets no answer
-back: the agent tries again and sees whether it works.
+the same request from the same app is ignored for a minute.
 
 ## Links
 

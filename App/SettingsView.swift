@@ -45,7 +45,7 @@ struct SettingsView: View {
             } header: {
                 Text("Internet")
             } footer: {
-                Text("Right-click a watched app in the panel and choose Limit Internet to Its Model. The network filter then drops its connections to the internet, commands it starts included, except to its developer's own hosts (Anthropic's for Claude, OpenAI's for ChatGPT) and the ones here. The local network keeps its own switch. A change here applies the next time you limit an app. The filter goes by the host name a connection gives, which stops an agent that was talked into visiting a site, not one built to lie about where it's going.")
+                Text("Switch an app's Internet off in the panel and the network filter drops its connections to the internet, commands it starts included, except to its developer's own hosts (Anthropic's for Claude, OpenAI's for ChatGPT) and the ones here. The local network keeps its own switch. A change here applies the next time you switch an app's Internet off. The filter goes by the host name a connection gives, which stops an agent that was talked into visiting a site, not one built to lie about where it's going.")
                     .foregroundStyle(.secondary)
             }
 

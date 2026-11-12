@@ -9,13 +9,12 @@ from its section below.
 
 ### Added
 
-- Apps can ask for access with a `revoke://request` link. Revoke shows who's asking, for
+- Apps can ask for access with `Revoke --request` or a `revoke://request` link. Revoke shows who's asking, for
   what, and why, and nothing changes unless you say yes. Local Network is allowed for
   the time asked and then blocked again by the filter itself; for the privacy lists, yes
   opens System Settings.
-- **Limit Internet to Its Model**, in a watched app's right-click menu, keeps the app
-  and the commands it starts to its developer's own hosts on the internet, plus any you
-  add in Settings. The local network keeps its own switch. A limited app can ask for
+- An **Internet** column. Switched off, it keeps the app and the commands it starts to
+  its developer's own hosts on the internet, plus any you add in Settings. The local network keeps its own switch. A limited app can ask for
   the whole internet for a while with `revoke://request?access=internet`.
 
 ### Changed

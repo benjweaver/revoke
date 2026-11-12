@@ -190,7 +190,6 @@ struct PanelView: View {
         HStack(spacing: PanelLayout.columnSpacing) {
             label(row, caption: [
                 AppInfo.role(row.client),
-                model.isInternetLimited(row.client) ? "Internet: its model only" : nil,
                 row.deadline.map { "Revokes at \($0.formatted(date: .omitted, time: .shortened))" },
             ].compactMap { $0 }.joined(separator: " · ").nilIfEmpty)
             ForEach(Pane.allCases) { pane in
@@ -206,16 +205,6 @@ struct PanelView: View {
                     .disabled(model.isRevoking)
                 Divider()
             }
-            if filter.isOn, row.client.bundleID != nil {
-                if model.isInternetLimited(row.client) {
-                    Button("Allow the Whole Internet") { model.setInternetLimited(false, for: row.client) }
-                        .disabled(model.isRevoking)
-                } else {
-                    Button("Limit Internet to Its Model") { model.setInternetLimited(true, for: row.client) }
-                        .disabled(model.isRevoking)
-                }
-                Divider()
-            }
             if settings.isWatched(row.client) {
                 Button("Stop Watching") { settings.setWatched(row.client, false) }
             } else {
@@ -228,7 +217,7 @@ struct PanelView: View {
     /// A deleted app gets one button rather than switches: nothing it left behind
     /// is worth keeping, and none of it can be switched back on.
     private func leftoverRow(_ row: Row) -> some View {
-        let on = Pane.allCases.filter(row.isAllowed).map(\.shortTitle)
+        let on = Pane.allCases.filter { $0 != .internet && row.isAllowed($0) }.map(\.shortTitle)
         return HStack(spacing: PanelLayout.columnSpacing) {
             label(row, caption: on.isEmpty ? "Listed, switched off" : "\(on.formatted(.list(type: .and))) on")
             Button("Remove") { model.removeLeftovers([row.client]) }
@@ -263,7 +252,11 @@ struct PanelView: View {
             Text("–")
                 .foregroundStyle(.tertiary)
                 .tip("Nothing opens \(row.name) with a link or a file.")
-        } else if (pane == .running || pane == .other) && row.client.bundleID == nil {
+        } else if pane == .internet && !filter.isOn {
+            Text("–")
+                .foregroundStyle(.tertiary)
+                .tip("Install Revoke's network filter in Settings to keep an app to its model's hosts.")
+        } else if (pane == .running || pane == .other || pane == .internet) && row.client.bundleID == nil {
             Text("–")
                 .foregroundStyle(.tertiary)
                 .tip("Only System Settings can change command-line tools listed by path.")
@@ -289,6 +282,10 @@ struct PanelView: View {
             Text("–")
                 .foregroundStyle(.tertiary)
                 .tip("No watched app registers links or files.")
+        } else if pane == .internet && !filter.isOn {
+            Text("–")
+                .foregroundStyle(.tertiary)
+                .tip("Install Revoke's network filter in Settings to keep apps to their models' hosts.")
         } else if pane == .other {
             watchedOtherMenu(watched)
         } else if !model.snapshot.canRead(pane) {
@@ -405,6 +402,11 @@ struct PanelView: View {
                 ? "Switches Links off for every watched app, so Revoke asks you before links or files open them."
                 : "Revoke asks you before links or files open any watched app. Switch on to let them open directly."
         }
+        if pane == .internet {
+            return isOn
+                ? "Keeps every watched app to its own model provider's hosts on the internet, and the ones you added in Settings."
+                : "Revoke is keeping every watched app to its model's hosts. Switch on to give them the whole internet again."
+        }
         if pane == .localNetwork && filter.isOn {
             if isOn {
                 return "Blocks every watched app from reaching your local network."
@@ -423,6 +425,14 @@ struct PanelView: View {
             return row.isRunning
                 ? "\(row.name) is running. Switch off to stop it, its helpers, and everything they started, such as an agent's shells and tools."
                 : "\(row.name) isn't running. Switch on to open it."
+        }
+        if pane == .internet {
+            let hosts = model.internetHosts(for: row.client)
+            let kept = hosts.isEmpty ? "off the internet altogether, until you add its model's hosts in Settings"
+                : "to \(hosts.formatted(.list(type: .and))) on the internet"
+            return row.isInternetLimited
+                ? "Revoke is keeping \(row.name), and the commands it starts, \(kept). Switch on to give it the whole internet again."
+                : "\(row.name) can reach anywhere on the internet. Switch off to keep it, and the commands it starts, \(kept). Your local network has its own switch."
         }
         if pane == .links, let links = model.snapshot.links[row.client] {
             let open = Self.ways(links.open)

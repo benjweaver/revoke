@@ -11,7 +11,7 @@ enum InternetHosts {
     /// subdomain of any of them counts. Apps from other developers start with none, and
     /// only reach the hosts added in Settings.
     static let builtIn: [String: [String]] = [
-        "com.anthropic": ["anthropic.com", "claude.ai", "claude.com"],
+        "com.anthropic": ["anthropic.com", "claude.ai", "claude.com", "claudeusercontent.com"],
         "com.openai": ["openai.com", "chatgpt.com", "oaistatic.com", "oaiusercontent.com"],
         // Cursor.
         "com.todesktop.230313mzl4w4u92": ["cursor.sh", "cursor.com"],
