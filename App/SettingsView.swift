@@ -198,10 +198,12 @@ struct SettingsView: View {
         case .needsApproval:
             Text("Allow Revoke in System Settings > General > Login Items & Extensions, under Network Extensions.")
                 .fixedSize(horizontal: false, vertical: true)
-            Button("Open Login Items & Extensions") {
-                NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.LoginItems-Settings.extension")!)
+            Button("Open Network Extensions") {
+                // Straight to the list with Revoke's switch in it. The Login Items pane
+                // this used to open leaves the person to find that list themselves.
+                NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.ExtensionsPreferences?extensionPointIdentifier=com.apple.system_extension.network_extension.extension-point")!)
             }
-            .tip("Opens the settings where you allow Revoke's network filter.")
+            .tip("Opens the list in System Settings where you allow Revoke's network filter.")
         case .off:
             Text("The network filter is installed but switched off.")
             Button("Turn On") { filter.enable() }

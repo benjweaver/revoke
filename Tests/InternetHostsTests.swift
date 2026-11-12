@@ -32,6 +32,30 @@ struct InternetHostsTests {
         }
     }
 
+    /// The hosts each app names in its own bundle for its model and sign-in, as shipped
+    /// in November 2026, and a few it has no business reaching while limited.
+    @Test func builtInHostsCoverWhatEachAppCalls() {
+        let needed = [
+            "com.anthropic": ["api.anthropic.com", "claude.ai", "console.anthropic.com", "www.claudeusercontent.com"],
+            "com.openai": ["api.openai.com", "chatgpt.com", "auth.openai.com", "cdn.openai.com",
+                           "persistent.oaistatic.com", "web-sandbox.oaiusercontent.com"],
+            "com.todesktop.230313mzl4w4u92": ["api2.cursor.sh", "api3.cursor.sh", "cursor.com", "downloads.cursor.com",
+                                              "marketplace.cursorapi.com"],
+            "com.deepseek": ["api.deepseek.com", "chat.deepseek.com"],
+        ]
+        #expect(Set(needed.keys) == Set(InternetHosts.builtIn.keys))
+        for (vendor, hosts) in needed {
+            let allowed = InternetHosts.builtIn[vendor] ?? []
+            for host in hosts { #expect(InternetHosts.matches(host, allowed), "\(vendor) \(host)") }
+            for host in ["example.org", "github.com", "pastebin.com", "openai.com.example.org", "cursor.sh.example.org"] {
+                #expect(!InternetHosts.matches(host, allowed), "\(vendor) \(host)")
+            }
+        }
+        // One developer's hosts aren't another's.
+        #expect(!InternetHosts.matches("api.openai.com", InternetHosts.builtIn["com.anthropic"] ?? []))
+        #expect(!InternetHosts.matches("api.anthropic.com", InternetHosts.builtIn["com.openai"] ?? []))
+    }
+
     @Test func readsTheServerNameFromATLSHello() {
         let hello = Self.hello(serverName: "api.example.com")
         #expect(TLSClientHello.serverName(in: hello) == .name("api.example.com"))

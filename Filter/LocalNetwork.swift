@@ -46,6 +46,10 @@ enum LocalNetwork {
     /// Whether an endpoint's address falls in one of the ranges. Hostnames don't:
     /// the filter sees the address a connection actually goes to.
     static func contains(_ endpoint: NWEndpoint) -> Bool {
+        contains(endpoint, in: ranges)
+    }
+
+    static func contains(_ endpoint: NWEndpoint, in ranges: [Range]) -> Bool {
         guard case .hostPort(let host, _) = endpoint, let address = bytes(of: host) else { return false }
         return ranges.contains { covers($0, address) }
     }
@@ -83,18 +87,25 @@ enum LocalNetwork {
                   let bytes = bytes(of: address), let mask = self.bytes(of: netmask, family: address.pointee.sa_family),
                   bytes.count == mask.count
             else { continue }
-            let prefix = mask.reduce(0) { $0 + $1.nonzeroBitCount }
-            // A host route has no neighbors to reach, and a very short prefix would
-            // make much of the internet "local" and cut a blocked app off from it.
-            let minimum = bytes.count == 4 ? 8 : 32
-            guard prefix >= minimum, prefix < bytes.count * 8 else { continue }
-            let network = zip(bytes, mask).map { $0 & $1 }
-            guard !(fixedRanges + loopback).contains(where: { $0.prefix <= prefix && covers($0, network) }),
-                  let range = range(network, prefix: prefix), !found.contains(range)
-            else { continue }
+            guard let range = onLinkRange(address: bytes, mask: mask), !found.contains(range) else { continue }
             found.append(range)
         }
         return found
+    }
+
+    /// The subnet an interface's address and netmask put the Mac on, as 4 or 16 bytes
+    /// each, or nil when it adds nothing: one the fixed ranges already cover, loopback,
+    /// a single host, or one too wide to call local.
+    static func onLinkRange(address: [UInt8], mask: [UInt8]) -> Range? {
+        guard address.count == mask.count, address.count == 4 || address.count == 16 else { return nil }
+        let prefix = mask.reduce(0) { $0 + $1.nonzeroBitCount }
+        // A host route has no neighbors to reach, and a very short prefix would
+        // make much of the internet "local" and cut a blocked app off from it.
+        let minimum = address.count == 4 ? 8 : 32
+        guard prefix >= minimum, prefix < address.count * 8 else { return nil }
+        let network = zip(address, mask).map { $0 & $1 }
+        guard !(fixedRanges + loopback).contains(where: { $0.prefix <= prefix && covers($0, network) }) else { return nil }
+        return range(network, prefix: prefix)
     }
 
     /// Tunnel interfaces that don't set IFF_POINTOPOINT: VPNs (utun, ipsec) and

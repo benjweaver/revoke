@@ -14,7 +14,7 @@ enum InternetHosts {
         "com.anthropic": ["anthropic.com", "claude.ai", "claude.com", "claudeusercontent.com"],
         "com.openai": ["openai.com", "chatgpt.com", "oaistatic.com", "oaiusercontent.com"],
         // Cursor.
-        "com.todesktop.230313mzl4w4u92": ["cursor.sh", "cursor.com"],
+        "com.todesktop.230313mzl4w4u92": ["cursor.sh", "cursor.com", "cursorapi.com", "cursor-cdn.com"],
         "com.deepseek": ["deepseek.com"],
     ]
 
