@@ -17,6 +17,12 @@ from its section below.
 
 ### Fixed
 
+- Blocking an app's Local Network could take its internet with it. macOS looks names
+  up for every app and marks each lookup as the app's, so the filter dropped a blocked
+  app's lookups whenever the DNS server was on the local network, as a home router is.
+  Names macOS still remembered kept working, which hid it. An app with its Internet
+  limited lost its lookups the same way when the DNS server was out on the internet.
+  The filter now lets the system resolver's lookups through.
 - After a timed allowance ended, the panel could still show Local Network or Internet
   as on if Revoke had been started again in between, though the filter was blocking.
   The panel now asks the filter each time it opens.

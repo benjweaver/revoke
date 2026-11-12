@@ -20,6 +20,9 @@
 # 4. Internet. Limits the test app to one host and checks it reaches that host and not
 #    another, through curl and URLSession, nor with a TLS hello that names the other host
 #    sent to the allowed host's address, and that the local network still works.
+#    It empties macOS's cache of names first, so the app has to look them up through a
+#    DNS server on the local network while blocked, and through one on the internet
+#    while limited: both must still work.
 # 5. Requests. Asks for the internet for a minute with `Revoke --request`, says yes, and
 #    checks the limit lifts and then comes back by itself.
 # 6. Everything at once. Switches off all the test app's access and checks every reset
@@ -70,6 +73,8 @@ extra_v4=100.64.77.1
 extra_v6=2001:db8:77::1
 # The shortest time limit Revoke offers, and how long past it the run waits.
 limit_minutes=15
+# A DNS server out on the internet, for checking a limited app can still look names up.
+public_dns=1.1.1.1
 limit_grace=120
 log=/tmp/revoke-escape-test.log
 defaults_domain=dev.benjweaver.Revoke
@@ -89,6 +94,8 @@ die() { print -u2 -r -- "escape-test.sh: $1"; exit 2; }
 
 saved_settings=/tmp/revoke-escape-settings.plist
 iface=
+dns_service=
+dns_before=
 cleanup() {
 	local rc=$?
 	trap - EXIT INT TERM
@@ -110,9 +117,20 @@ cleanup() {
 	guest "osascript -e 'tell application \"System Settings\" to quit'" >/dev/null 2>&1 || true
 	mac quit Revoke >/dev/null 2>&1 || true
 	sleep 1
-	guest "pkill -x EscapeTest; rm -rf $test_app $log $log.orphan $log.links /tmp/revoke-escape-app.zip /tmp/revoke-escape-test.zip /tmp/revoke-escape-answer.txt" >/dev/null 2>&1 || true
+	# What the test app saw, kept when something failed, for working out why.
+	if (( rc != 0 || failures > 0 )); then
+		mkdir -p build
+		guest "cat $log.curl 2>/dev/null" > build/escape-test-curl.log 2>/dev/null || true
+		guest "cat $log 2>/dev/null" > build/escape-test-app.log 2>/dev/null || true
+		guest "/usr/bin/log show --last 45m --style compact --predicate 'subsystem BEGINSWITH \"dev.benjweaver.Revoke\"' 2>/dev/null" > build/escape-test-revoke.log 2>/dev/null || true
+		print "  kept the test app's logs and Revoke's in build/escape-test-*.log"
+	fi
+	guest "pkill -x EscapeTest; rm -rf $test_app $log $log.orphan $log.links $log.curl /tmp/revoke-escape-app.zip /tmp/revoke-escape-test.zip /tmp/revoke-escape-answer.txt" >/dev/null 2>&1 || true
 	if [[ -n $iface ]]; then
 		guest "sudo ifconfig $iface -alias $extra_v4; sudo ifconfig $iface inet6 $extra_v6 -alias" >/dev/null 2>&1 || true
+	fi
+	if [[ -n $dns_service && -n $dns_before ]]; then
+		guest "sudo networksetup -setdnsservers '$dns_service' $dns_before" >/dev/null 2>&1 || true
 	fi
 	# Revoke's settings as they were, the links it held for other apps included.
 	guest "test -f $saved_settings && defaults import $defaults_domain $saved_settings && rm -f $saved_settings" >/dev/null 2>&1 || true
@@ -263,6 +281,13 @@ restore_links() {
 		cat /tmp/revoke-escape-answer.txt; rm -f /tmp/revoke-escape-answer.txt" 2>/dev/null || true
 }
 
+# Empties macOS's cache of looked-up names, so the test app's next lookups have to ask
+# the DNS server rather than be answered from memory.
+forget_names() {
+	guest "sudo dscacheutil -flushcache; sudo killall -HUP mDNSResponder" >/dev/null 2>&1 || true
+	sleep 2
+}
+
 # MARK: - Installing
 
 install_app() {
@@ -347,7 +372,7 @@ codesign -f -s - -i "$test_id" "$build/EscapeTest.app" 2>/dev/null
 ditto -c -k --keepParent "$build/EscapeTest.app" "$build/test.zip"
 scp -q "$build/test.zip" "$host:/tmp/revoke-escape-test.zip"
 rm -rf "$build"
-guest "pkill -x EscapeTest; rm -rf $test_app $log $log.orphan $log.links; ditto -x -k /tmp/revoke-escape-test.zip /Applications/ && rm -f /tmp/revoke-escape-test.zip"
+guest "pkill -x EscapeTest; rm -rf $test_app $log $log.orphan $log.links $log.curl; ditto -x -k /tmp/revoke-escape-test.zip /Applications/ && rm -f /tmp/revoke-escape-test.zip"
 
 print "==> Update: the latest release, then this build over it"
 read -r url sha version <<< "$(mac cask "$tap" revoke)"
@@ -377,6 +402,7 @@ done
 
 print "==> Local Network blocked"
 set_column local-network localNetworkBlocked yes
+forget_names
 line=$(results)
 expect "$line" lan_direct no "a connection from the app itself is dropped"
 expect "$line" lan_child no "a connection from a command it runs is dropped"
@@ -384,6 +410,9 @@ expect "$line" lan_orphan no "a connection from a helper it handed to launchd is
 expect "$line" lan_extra1 no "a connection to a carrier-grade NAT subnet the VM is on is dropped"
 expect "$line" lan_extra2 no "a connection to a global IPv6 subnet the VM is on is dropped"
 expect "$line" net_other ok "the internet is untouched"
+# The VM's DNS server is its gateway, on the local network. Dropping the lookups macOS
+# makes for a blocked app took the internet with them once a remembered name ran out.
+expect "$line" net_allowed ok "and names still look up, though the DNS server is on the local network"
 if guest "nc -z -G 3 $gateway 53" >/dev/null 2>&1; then pass "an app that isn't blocked still reaches the gateway"; else fail "an app that isn't blocked lost the gateway too"; fi
 
 print "==> Tampering with Revoke's saved list"
@@ -418,6 +447,23 @@ expect "$line" net_other_session no "URLSession to another host is dropped"
 expect "$line" net_fronted no "a hello naming another host, sent to the allowed host's address, is dropped"
 expect "$line" lan_direct ok "the local network is untouched"
 if guest "curl -s -m 6 -o /dev/null https://$other_host"; then pass "an app that isn't limited still reaches the other host"; else fail "an app that isn't limited lost the other host too"; fi
+# The same with the DNS server out on the internet, where a limited app's lookups go
+# when the Mac uses a public resolver.
+dns_service=$(guest "networksetup -listnetworkserviceorder | grep -B1 'Device: $iface)' | head -1 | sed 's/^([0-9]*) //'")
+if [[ -n $dns_service ]]; then
+	dns_before=$(guest "networksetup -getdnsservers '$dns_service'" | tr '\n' ' ')
+	[[ $dns_before == *"aren't any"* ]] && dns_before=empty
+	guest "sudo networksetup -setdnsservers '$dns_service' $public_dns"
+	forget_names
+	line=$(results)
+	guest "sudo networksetup -setdnsservers '$dns_service' $dns_before"
+	forget_names
+	expect "$line" net_allowed ok "names look up with the DNS server on the internet (curl)"
+	expect "$line" net_allowed_session ok "names look up with the DNS server on the internet (URLSession)"
+	expect "$line" net_other no "and the other host is still dropped"
+else
+	fail "couldn't find the VM's network service for $iface to change its DNS server"
+fi
 
 print "==> A request for the internet, for a minute"
 # Over ssh nothing stands behind the command, so the request names the app; Revoke says

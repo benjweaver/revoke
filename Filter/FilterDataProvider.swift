@@ -86,6 +86,7 @@ final class FilterDataProvider: NEFilterDataProvider, @unchecked Sendable {
             return .filterDataVerdict(withFilterInbound: false, peekInboundBytes: 0,
                                       filterOutbound: true, peekOutboundBytes: 1)
         }
+        if isNameLookup(flow, going: remote) { return .allow() }
         if LocalNetwork.contains(remote) { return blocks(flow, going: remote) ? .drop() : .allow() }
         switch internetVerdict(for: flow, going: remote, firstBytes: nil) {
         case .allow: return .allow()
@@ -99,6 +100,7 @@ final class FilterDataProvider: NEFilterDataProvider, @unchecked Sendable {
     override func handleOutboundData(from flow: NEFilterFlow, readBytesStartOffset offset: Int,
                                      readBytes: Data) -> NEFilterDataVerdict {
         guard let flow = flow as? NEFilterSocketFlow, let remote = flow.remoteFlowEndpoint else { return .allow() }
+        if isNameLookup(flow, going: remote) { return .allow() }
         if LocalNetwork.contains(remote) { return blocks(flow, going: remote) ? .drop() : .allow() }
         switch internetVerdict(for: flow, going: remote, firstBytes: offset == 0 ? readBytes : nil) {
         case .allow: return .allow()
@@ -111,6 +113,22 @@ final class FilterDataProvider: NEFilterDataProvider, @unchecked Sendable {
             }
             return NEFilterDataVerdict(passBytes: 0, peekBytes: readBytes.count + Self.helloBytes)
         }
+    }
+
+    /// DNS over port 53, over TLS, and over HTTPS.
+    private static let lookupPorts: Set<UInt16> = [53, 853, 443]
+
+    /// Whether this is macOS's resolver looking a name up for an app. Those go through
+    /// whatever the app is kept from, as they do under macOS's own Local Network
+    /// permission: the DNS server is usually the router, on the local network, and an
+    /// app that can't look names up can't reach its own model either. The resolver
+    /// only asks the servers the Mac is set to use, so this isn't a way to reach other
+    /// devices. Bonjour, which is how apps find those, uses another port and stays
+    /// blocked. What it can't stop is a lookup carrying a little data out in the name
+    /// it asks for.
+    private func isNameLookup(_ flow: NEFilterSocketFlow, going remote: NWEndpoint) -> Bool {
+        guard case .hostPort(_, let port) = remote, Self.lookupPorts.contains(port.rawValue) else { return false }
+        return AppIdentity.isSystemResolver(flow)
     }
 
     private func blocks(_ flow: NEFilterSocketFlow, going remote: NWEndpoint) -> Bool {

@@ -27,6 +27,7 @@ enum Probe {
     static let extras = Array(arguments.dropFirst(5))
     static let orphanPath = logPath + ".orphan"
     static let linksPath = logPath + ".links"
+    static let curlPath = logPath + ".curl"
     /// A TCP port the local address answers on: the VM's gateway runs a DNS server.
     static let localPort = "53"
     /// And one the on-link addresses answer on: they're the VM's own, and it runs sshd.
@@ -109,9 +110,14 @@ enum Probe {
     }
 
     /// A request from `curl`, which looks the host up itself and connects to an address.
+    /// What curl made of each one goes in <log file>.curl, for working out a failure:
+    /// the HTTP status, curl's exit code, and how long the lookup, the connection, and
+    /// the whole request took.
     static func curl(_ url: String, _ more: [String] = []) -> Bool {
-        let status = run("/usr/bin/curl", ["-s", "-k", "-m", "5", "-o", "/dev/null", "-w", "%{http_code}"] + more + [url]).output
-        return status.hasPrefix("2") || status.hasPrefix("3")
+        let report = "%{http_code} exit=%{exitcode} lookup=%{time_namelookup} connect=%{time_connect} tls=%{time_appconnect} total=%{time_total} ip=%{remote_ip}"
+        let output = run("/usr/bin/curl", ["-s", "-k", "-m", "5", "-o", "/dev/null", "-w", report] + more + [url]).output
+        append("\(Int(Date().timeIntervalSince1970)) \(url) \(more.joined(separator: " ")) -> \(output)", to: curlPath)
+        return output.hasPrefix("2") || output.hasPrefix("3")
     }
 
     /// A request through URLSession, which hands macOS the host name.

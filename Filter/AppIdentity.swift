@@ -44,6 +44,24 @@ enum AppIdentity {
         return identifiers
     }
 
+    /// CS_PLATFORM_BINARY from <sys/codesign.h>: part of macOS itself, which no
+    /// signature an app can make for itself sets.
+    private static let platformBinary: UInt32 = 0x0400_0000
+
+    /// Whether the connection is macOS's own resolver, mDNSResponder, at work. It
+    /// looks names up for every app, and marks each lookup as the app's, so the app
+    /// shows up behind the connection though the resolver made it. The identifier
+    /// alone isn't enough, since any program can sign itself with that name: the
+    /// kernel also has to say the process is part of macOS. Without
+    /// `csops_audittoken` there's no asking, and the answer is no.
+    static func isSystemResolver(_ flow: NEFilterFlow) -> Bool {
+        guard let data = flow.sourceProcessAuditToken, var token = auditToken(data),
+              kernelIdentifier(token: token) == "com.apple.mDNSResponder" else { return false }
+        var status: UInt32 = 0
+        guard csopsAuditToken(statusOperation, &status, MemoryLayout<UInt32>.size, &token) == 0 else { return false }
+        return status & platformBinary != 0
+    }
+
     private static func pid(from token: Data) -> pid_t? {
         auditToken(token).map { pid_t(bitPattern: $0.val.5) }
     }

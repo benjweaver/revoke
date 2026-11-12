@@ -187,6 +187,11 @@ or crashes macOS lets traffic through rather than cutting the Mac off. It can't 
 Bonjour discovery, which macOS's own mDNSResponder does on an app's behalf. Only Revoke,
 signed with the same Developer ID, can change what it blocks.
 
+Looking names up is let through, as it is under macOS's own Local Network rule. macOS's
+resolver does that for every app, usually by asking the router, and an app that can't
+look names up can't reach the internet either. The resolver only asks the DNS servers
+the Mac is set to use, so it's no way to reach other devices.
+
 The filter keeps its list of blocked apps itself, saved as root, and Revoke reads it
 from there each time the filter switches on. A blocked app can't lift its own block by
 editing Revoke's settings: only you can, by switching its Local Network back on in the
@@ -218,7 +223,9 @@ and the server name a TLS connection asks for, which both have to be allowed. Th
 stops an agent a web page talked into fetching or posting somewhere. It doesn't stop
 one built to lie: providers sit behind content networks that many sites share, and a
 connection that names an allowed host there can be answered by another site on the
-same network. Connections that name no host at all are dropped.
+same network. Connections that name no host at all are dropped. Looking names up is
+the exception: a limited app can still ask macOS's resolver for any name, and the name
+it asks for can carry a little data out to whoever runs that domain.
 
 While any app is limited, the filter looks at every new connection on the Mac to see
 whose it is, and lets everything from other apps straight through.
