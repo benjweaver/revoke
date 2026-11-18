@@ -38,11 +38,14 @@ from its section below.
 
 - All Access is a Revoke button in each row, since it could only ever switch off.
 - A switch that's on and that only System Settings can change has a lock on it.
-- The panel has a solid background. It was see-through, and in the light appearance
-  over a dark desktop it went mid-gray with the app names gray on gray.
-- Small gray text in the panel was about 4:1 against its background, and the white on
-  the blue button the same. Both are darker now: the lowest measured is 5.8:1 in the
-  light appearance and 6.7:1 in the dark.
+- The panel's glass has a veil of the window's background color over it. Bare, it
+  took its lightness from the desktop behind it, and in the light appearance over a
+  dark desktop it went mid-gray with the app names gray on gray. Reduce Transparency
+  and Increase Contrast make the panel solid.
+- Small gray text in the panel was about 4:1 even on white, and the white on the blue
+  button the same. The panel's text now has its own solid colors, worked out to hold
+  at least 4.5:1 on the veiled glass whatever is behind it, in light and dark. That
+  is arithmetic, checked by the tests, and hasn't been measured on a screen yet.
 - On a screen too short for it, the panel scrolls. macOS used to push its top, with
   the title and Settings, off the screen.
 - The sentence about System Settings under the panel is gone: the column groups say it.

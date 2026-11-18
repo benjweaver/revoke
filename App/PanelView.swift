@@ -12,6 +12,7 @@ struct PanelView: View {
     let openSettings: () -> Void
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @Environment(\.colorSchemeContrast) private var contrast
+    @Environment(\.colorScheme) private var colorScheme
 
     /// Past this many rows the list scrolls, so the panel stays on screen.
     private static let rowsBeforeScrolling = 10
@@ -25,10 +26,17 @@ struct PanelView: View {
         }
         .frame(width: width)
         .frame(maxHeight: maxHeight)
-        // The popover's own Liquid Glass, as macOS draws it. A solid ground stands in
-        // only for someone who has asked macOS for less transparency or more contrast.
+        // The popover's own Liquid Glass, as macOS draws it, under a veil of the window's
+        // background color. The glass takes its lightness from what's behind the panel
+        // (in the light appearance over a dark desktop it went mid-gray, with dark text
+        // on it at about 2:1), and macOS has no way for an app to tint a popover's glass
+        // or learn how dark it is. The veil keeps the ground within a range the text
+        // colors are checked against: see PanelPalette. A solid ground stands in for
+        // someone who has asked macOS for less transparency or more contrast.
         .background {
-            if reduceTransparency || contrast == .increased { Color(nsColor: .windowBackgroundColor) }
+            Color(nsColor: .windowBackgroundColor)
+                .opacity(reduceTransparency || contrast == .increased ? 1
+                         : PanelPalette.veilOpacity.value(isDark: colorScheme == .dark))
         }
         .tipHost()
     }
@@ -77,6 +85,8 @@ struct PanelView: View {
             key
         }
         .padding(PanelLayout.padding)
+        // Everything not given a color of its own, in place of the see-through `.primary`.
+        .foregroundStyle(Color.panelPrimary)
     }
 
     /// Which columns behave alike, named above them: what only macOS can grant, what
@@ -370,7 +380,8 @@ struct PanelView: View {
         .accessibilityElement(children: .contain)
         .accessibilityLabel("All watched apps")
         // The shading reaches a little past the row without moving its columns.
-        .background(RoundedRectangle(cornerRadius: 8).fill(.quaternary.opacity(0.5)).padding(.horizontal, -6))
+        // What `.quaternary` at half strength came to, spelled out so the tests can count it.
+        .background(RoundedRectangle(cornerRadius: 8).fill(Color.panelPrimary.opacity(PanelPalette.shadeOpacity)).padding(.horizontal, -6))
     }
 
     /// How many watched apps have a column's switch on, of those it applies to, or nil
@@ -568,7 +579,7 @@ struct PanelView: View {
             Divider()
             Button("Reset All of These") { model.reset(access, for: row.client) }
         } label: {
-            Image(systemName: "arrow.counterclockwise")
+            Image(systemName: "arrow.counterclockwise").foregroundStyle(Color.panelSecondary)
         }
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
@@ -590,7 +601,7 @@ struct PanelView: View {
             Divider()
             Button("Reset All of These") { model.reset(access, for: clients) }
         } label: {
-            Image(systemName: "arrow.counterclockwise")
+            Image(systemName: "arrow.counterclockwise").foregroundStyle(Color.panelSecondary)
         }
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
@@ -740,7 +751,7 @@ struct AccessSwitch: View {
                 Image(systemName: "clock").font(.system(size: 9, weight: .semibold))
                 Text(left).font(.system(size: 10, weight: .semibold)).monospacedDigit()
             }
-            .foregroundStyle(.primary)
+            .foregroundStyle(Color.panelPrimary)
             .frame(width: 46, height: 18)
             .background(Color.orange.opacity(0.22), in: Capsule())
             .overlay(Capsule().strokeBorder(.orange, lineWidth: 1.5))
@@ -780,10 +791,10 @@ struct PanelButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(prominent ? .body.weight(.medium) : compact ? .caption : .callout)
-            .foregroundStyle(prominent ? AnyShapeStyle(.white) : AnyShapeStyle(.primary))
+            .foregroundStyle(prominent ? Color.white : Color.panelPrimary)
             .padding(.horizontal, prominent ? 14 : compact ? 7 : 10)
             .padding(.vertical, prominent ? 6 : compact ? 3 : 4)
-            .background(prominent ? Color.panelProminent : Color.panelTrack.opacity(0.6), in: Capsule())
+            .background(prominent ? Color.panelProminent : Color.panelTrack.opacity(PanelPalette.buttonOpacity), in: Capsule())
             .opacity(configuration.isPressed ? 0.7 : isEnabled ? 1 : 0.4)
             .contentShape(Capsule())
     }
@@ -793,25 +804,29 @@ private extension String {
     var nilIfEmpty: String? { isEmpty ? nil : self }
 }
 
-/// The panel's own colors, measured against its background rather than left to the
-/// system's, which came out under 4.5:1 for small gray text and for white on the tint.
+/// The panel's own colors, as PanelPalette works them out: the system's label colors
+/// are partly see-through, which on glass of unknown lightness came out under 4.5:1.
 extension Color {
-    private static func panel(light: CGFloat, dark: CGFloat) -> Color {
+    private static func panel(_ pair: PanelPalette.Pair<PanelPalette.RGB>) -> Color {
         Color(nsColor: NSColor(name: nil) { appearance in
-            let isDark = appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
-            return NSColor(white: isDark ? dark : light, alpha: 1)
+            let rgb = pair.value(isDark: appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua)
+            return NSColor(srgbRed: rgb.red, green: rgb.green, blue: rgb.blue, alpha: 1)
         })
     }
 
-    /// Captions, column titles, and notes: 6.5:1 on the light panel, 8:1 on the dark.
-    static let panelSecondary = panel(light: 0.37, dark: 0.72)
+    private static func panel(_ pair: PanelPalette.Pair<Double>) -> Color {
+        panel(PanelPalette.Pair(light: .gray(pair.light), dark: .gray(pair.dark)))
+    }
+
+    /// Names, titles, and button labels.
+    static let panelPrimary = panel(PanelPalette.primary)
+    /// Captions, column titles, and notes.
+    static let panelSecondary = panel(PanelPalette.secondary)
     /// A switch that's off, and the plain buttons.
-    static let panelTrack = panel(light: 0.74, dark: 0.32)
-    /// The one filled button. White on the system's blue is about 4:1; on this, 5.4:1.
-    static let panelProminent = Color(red: 0, green: 0.39, blue: 0.85)
-    /// Something failed: a red dark enough to read on white, light enough on black.
-    static let panelError = Color(nsColor: NSColor(name: nil) { appearance in
-        appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
-            ? NSColor(red: 1, green: 0.45, blue: 0.40, alpha: 1) : NSColor(red: 0.75, green: 0.09, blue: 0.05, alpha: 1)
-    })
+    static let panelTrack = panel(PanelPalette.track)
+    /// The one filled button.
+    static let panelProminent = Color(
+        .sRGB, red: PanelPalette.prominent.red, green: PanelPalette.prominent.green, blue: PanelPalette.prominent.blue)
+    /// Something failed.
+    static let panelError = panel(PanelPalette.error)
 }
