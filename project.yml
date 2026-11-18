@@ -96,7 +96,7 @@ targets:
   RevokeTests:
     type: bundle.unit-test
     platform: macOS
-    sources: [Tests, Shared/InternetHosts.swift, Filter/LocalNetwork.swift, App/AccessRequest.swift, App/Allowances.swift, App/Links.swift, App/Pane.swift, App/PanelLayout.swift, App/TCCDatabase.swift]
+    sources: [Tests, Shared/InternetHosts.swift, Filter/LocalNetwork.swift, App/AccessRequest.swift, App/Allowances.swift, App/Links.swift, App/Pane.swift, App/PanelLayout.swift, App/PanelPalette.swift, App/TCCDatabase.swift]
     dependencies:
       - target: Revoke
         embed: false
