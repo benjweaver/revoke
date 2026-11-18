@@ -37,12 +37,12 @@ struct PanelView: View {
         let watched = model.rows(watched: true)
         let others = model.rows(watched: false)
         let leftovers = model.leftoverRows
-        return VStack(alignment: .leading, spacing: 14) {
+        return VStack(alignment: .leading, spacing: PanelLayout.sectionSpacing) {
             header
             if !model.snapshot.canReadTCC { fullDiskAccessNotice }
             onForNow
 
-            VStack(alignment: .leading, spacing: 6) {
+            VStack(alignment: .leading, spacing: PanelLayout.rowSpacing) {
                 groupTitles
                 columnTitles
                 let list = appList(watched: watched, others: others, leftovers: leftovers)
@@ -51,32 +51,45 @@ struct PanelView: View {
                 } else {
                     list
                 }
+                // Right under the switches it explains, and only while there's
+                // something to explain.
+                key(watched: watched, others: others)
             }
 
             Divider()
-            HStack {
-                Button("Revoke All Watched") { model.revokeWatched(reason: nil) }
-                    .buttonStyle(PanelButtonStyle(prominent: true))
-                    .disabled(model.isRevoking)
-                    .tip("Switches off every access switch the watched apps have, Links included. Running apps keep going but have to ask again; Stop All Apps stops them.")
-                Button("Stop All Apps") { model.stopAll() }
-                    .buttonStyle(PanelButtonStyle(prominent: false))
-                    .disabled(model.isRevoking)
-                    .tip("Stops every watched app, its helpers, and everything they started, such as an agent's shells and tools. The switches stay as they are.")
-                if model.isRevoking {
-                    ProgressView().controlSize(.small).tip("Revoking…")
-                }
+            footer
+        }
+        .padding(PanelLayout.padding)
+    }
+
+    /// The two buttons that act on every watched app, with the last thing Revoke did
+    /// beside them rather than on a line of its own.
+    private var footer: some View {
+        HStack(spacing: PanelLayout.rowSpacing) {
+            Button("Revoke All Watched") { model.revokeWatched(reason: nil) }
+                .buttonStyle(PanelButtonStyle(prominent: true))
+                .disabled(model.isRevoking)
+                .fixedSize()
+                .tip("Switches off every access switch the watched apps have, Links included. Running apps keep going but have to ask again; Stop All Apps stops them.")
+            Button("Stop All Apps") { model.stopAll() }
+                .buttonStyle(PanelButtonStyle(prominent: false))
+                .disabled(model.isRevoking)
+                .fixedSize()
+                .tip("Stops every watched app, its helpers, and everything they started, such as an agent's shells and tools. The switches stay as they are.")
+            if model.isRevoking {
+                ProgressView().controlSize(.small).tip("Revoking…")
             }
             if let activity = model.lastActivity {
                 Text("\(activity.date.formatted(date: .omitted, time: .shortened)) · \(activity.text)")
                     .font(.caption)
                     .foregroundStyle(activity.isError ? Color.panelError : Color.panelSecondary)
+                    .multilineTextAlignment(.trailing)
                     .fixedSize(horizontal: false, vertical: true)
                     .tip(activity.isError ? "The last thing Revoke tried failed." : "The last thing Revoke did.")
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+                    .padding(.leading, PanelLayout.rowSpacing)
             }
-            key
         }
-        .padding(PanelLayout.padding)
     }
 
     /// Which columns behave alike, named above them: what only macOS can grant, what
@@ -85,18 +98,24 @@ struct PanelView: View {
         HStack(alignment: .bottom, spacing: PanelLayout.columnSpacing) {
             Spacer()
             ForEach(PanelLayout.groups, id: \.title) { group in
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(group.title).font(.caption.weight(.semibold))
-                    Text(group.note).font(.caption2).foregroundStyle(Color.panelSecondary)
-                        .tip(group.tip)
-                    Rectangle().fill(.separator).frame(height: 1).padding(.top, 2)
+                if group.title.isEmpty {
+                    Color.clear.frame(width: PanelLayout.width(ofColumns: group.columns), height: 1)
+                        .accessibilityHidden(true)
+                } else {
+                    VStack(alignment: .leading, spacing: 4) {
+                        // On one line: each note is short enough to sit beside its title.
+                        HStack(alignment: .firstTextBaseline, spacing: PanelLayout.groupNoteSpacing) {
+                            Text(group.title).font(.caption.weight(.semibold))
+                            Text(group.note).font(.caption2).foregroundStyle(Color.panelSecondary)
+                        }
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                        Rectangle().fill(.separator).frame(height: 1)
+                    }
+                    .frame(width: PanelLayout.width(ofColumns: group.columns), alignment: .leading)
+                    .tip(group.tip)
+                    .accessibilityElement(children: .combine)
                 }
-                .lineLimit(1)
-                .minimumScaleFactor(0.8)
-                .frame(width: PanelLayout.width(ofColumns: group.columns), alignment: .leading)
-                .opacity(group.title.isEmpty ? 0 : 1)
-                .accessibilityElement(children: .combine)
-                .accessibilityHidden(group.title.isEmpty)
             }
         }
     }
@@ -137,7 +156,7 @@ struct PanelView: View {
     private var onForNow: some View {
         let list = allowanceList
         if !list.isEmpty {
-            VStack(alignment: .leading, spacing: 6) {
+            VStack(alignment: .leading, spacing: 4) {
                 sectionTitle("On for now")
                     .tip("Access you said yes to when an app asked. Revoke takes each one back by itself when its time is up.")
                 VStack(spacing: 0) {
@@ -155,12 +174,12 @@ struct PanelView: View {
         let name = AppInfo.name(item.client)
         let minutes = Allowances.minutesLeft(until: item.until, now: model.clock)
         let end = item.until.formatted(date: .omitted, time: .shortened)
-        return HStack(spacing: 10) {
+        return HStack(spacing: PanelLayout.rowSpacing) {
             Image(nsImage: AppInfo.icon(item.client))
                 .resizable()
-                .frame(width: 20, height: 20)
+                .frame(width: PanelLayout.iconSize, height: PanelLayout.iconSize)
                 .accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: 1) {
+            VStack(alignment: .leading, spacing: 0) {
                 Text("\(name) · \(item.pane.title)").fontWeight(.medium)
                     .lineLimit(1).truncationMode(.middle)
                 Text("\(Image(systemName: "clock")) Until \(end) · \(Allowances.spoken(minutes: minutes)) left. \(afterward(item))")
@@ -177,8 +196,7 @@ struct PanelView: View {
                 .accessibilityLabel("End \(item.pane.title) for \(name) now")
                 .tip("Takes \(item.pane.title) back from \(name) now, without waiting for \(end).")
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 7)
+        .padding(8)
     }
 
     /// What Revoke does when the time is up.
@@ -203,42 +221,84 @@ struct PanelView: View {
 
     // MARK: - The key
 
-    /// One line saying what each shape of switch means.
-    private var key: some View {
-        let items: [(AnyView, String)] = [
-            (AnyView(AccessSwitch(isOn: false, kind: .plain)), "Off"),
-            (AnyView(AccessSwitch(isOn: true, kind: .plain)), "On"),
-            (AnyView(AccessSwitch(isOn: true, kind: .timed("38m"))), "On for now"),
-            (AnyView(AccessSwitch(isOn: true, kind: .locked)), "Only System Settings can change"),
-            (AnyView(AccessSwitch(isOn: true, kind: .mixed)), "On for some"),
-            (AnyView(Image(systemName: "questionmark").foregroundStyle(Color.panelSecondary)), "Unknown"),
-            (AnyView(Text("–").foregroundStyle(Color.panelSecondary)), "Doesn't apply"),
-        ]
-        func line(_ range: Range<Int>) -> some View {
-            HStack(spacing: 10) {
-                ForEach(range, id: \.self) { index in
+    /// What the shapes in the grid mean, beyond a switch that's on or off: only the
+    /// ones showing now, so most of the time it's a few words or nothing at all.
+    @ViewBuilder
+    private func key(watched: [Row], others: [Row]) -> some View {
+        let items = keyItems(watched: watched, others: others)
+        if !items.isEmpty {
+            HStack(spacing: PanelLayout.sectionSpacing) {
+                ForEach(items, id: \.self) { item in
                     HStack(spacing: 4) {
-                        items[index].0.scaleEffect(0.8).accessibilityHidden(true)
-                        Text(items[index].1)
+                        keySample(item).accessibilityHidden(true)
+                        Text(item.rawValue)
+                    }
+                }
+            }
+            .font(.caption2)
+            .foregroundStyle(Color.panelSecondary)
+            .lineLimit(1)
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("Key: \(items.map(\.rawValue).joined(separator: "; "))")
+        }
+    }
+
+    private enum KeyItem: String, CaseIterable {
+        case timed = "On for now"
+        case locked = "Only System Settings can change"
+        case mixed = "On for some"
+        case unknown = "Unknown"
+        case notApplicable = "Doesn't apply"
+    }
+
+    @ViewBuilder
+    private func keySample(_ item: KeyItem) -> some View {
+        switch item {
+        case .timed: AccessSwitch(isOn: true, kind: .timed("38m"))
+        case .locked: AccessSwitch(isOn: true, kind: .locked)
+        case .mixed: AccessSwitch(isOn: true, kind: .mixed)
+        case .unknown: Image(systemName: "questionmark")
+        case .notApplicable: Text("–")
+        }
+    }
+
+    /// Which of the key's shapes the grid is showing, by the same rules as cell,
+    /// watchedCount, and the Revoke column.
+    private func keyItems(watched: [Row], others: [Row]) -> [KeyItem] {
+        var found: Set<KeyItem> = []
+        for row in watched + others {
+            let isTool = row.client.bundleID == nil
+            // The Revoke column's own dash and question mark.
+            if isTool {
+                found.insert(.notApplicable)
+            } else if !model.snapshot.canReadTCC && !row.hasAccess(filterIsOn: filter.isOn) {
+                found.insert(.unknown)
+            }
+            for pane in Pane.allCases {
+                if (pane == .links && model.snapshot.links[row.client] == nil) || (pane == .internet && !filter.isOn)
+                    || ((pane == .running || pane == .other || pane == .internet) && isTool) {
+                    found.insert(.notApplicable)
+                } else if pane == .other {
+                    continue
+                } else if !model.snapshot.canRead(pane) {
+                    found.insert(.unknown)
+                } else {
+                    switch switchKind(row, pane) {
+                    case .timed: found.insert(.timed)
+                    case .locked: found.insert(.locked)
+                    case .plain, .mixed: break
                     }
                 }
             }
         }
-        return ViewThatFits(in: .horizontal) {
-            line(0..<items.count)
-            VStack(alignment: .leading, spacing: 4) {
-                line(0..<4)
-                line(4..<items.count)
-            }
+        for pane in Pane.allCases {
+            if let count = watchedCount(watched, pane), count.on > 0, count.on < count.total { found.insert(.mixed) }
         }
-        .font(.caption2)
-        .foregroundStyle(Color.panelSecondary)
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("Key: \(items.map(\.1).joined(separator: "; "))")
+        return KeyItem.allCases.filter(found.contains)
     }
 
     private func columnTitle(symbol: String, title: String, tip: String) -> some View {
-        VStack(spacing: 3) {
+        VStack(spacing: 4) {
             Image(systemName: symbol).accessibilityHidden(true)
             Text(title).font(.caption2).lineLimit(2).multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
@@ -249,7 +309,7 @@ struct PanelView: View {
     }
 
     private func appList(watched: [Row], others: [Row], leftovers: [Row]) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: PanelLayout.rowSpacing) {
             watchedHeader(watched)
             if watched.isEmpty {
                 Text("No watched apps are installed or running.").foregroundStyle(Color.panelSecondary)
@@ -257,7 +317,7 @@ struct PanelView: View {
             ForEach(watched) { row($0) }
 
             if !others.isEmpty {
-                sectionTitle("Other apps with access").padding(.top, 6)
+                sectionTitle("Other apps with access").padding(.top, 4)
                     .tip("Apps you don't watch that have Device Control, Screen Recording, Input Monitoring, or Automation. Revoke lists them but never revokes them by itself. Right-click one to watch it or hide it.")
                 ForEach(others) { row($0) }
             }
@@ -271,7 +331,7 @@ struct PanelView: View {
                         .disabled(model.isRevoking)
                         .tip("Removes every deleted app's leftover entries from the privacy lists.")
                 }
-                .padding(.top, 6)
+                .padding(.top, 4)
                 Text("macOS kept these permissions after the apps were deleted or replaced. Nothing installed can use them.")
                     .font(.caption)
                     .foregroundStyle(Color.panelSecondary)
@@ -282,13 +342,13 @@ struct PanelView: View {
     }
 
     private var header: some View {
-        HStack(alignment: .top) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Revoke").font(.headline)
-                Text(model.statusText).font(.subheadline).foregroundStyle(Color.panelSecondary)
-                    .tip(lockHelp)
-            }
-            Spacer()
+        // The name and the status share a line: the status is one short sentence.
+        HStack(alignment: .firstTextBaseline, spacing: PanelLayout.rowSpacing) {
+            Text("Revoke").font(.headline)
+            Text(model.statusText).font(.subheadline).foregroundStyle(Color.panelSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+                .tip(lockHelp)
+            Spacer(minLength: PanelLayout.rowSpacing)
             Button(action: openSettings) {
                 Image(systemName: "gearshape").font(.title3)
             }
@@ -315,7 +375,7 @@ struct PanelView: View {
     }
 
     private var fullDiskAccessNotice: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: PanelLayout.rowSpacing) {
             Label("Revoke can't see who has access yet", systemImage: "exclamationmark.triangle.fill")
                 .font(.subheadline.weight(.semibold))
             Text("Give it Full Disk Access to read the permissions list, then choose Quit & Reopen. It only reads the list: macOS doesn't let any app edit it. Revoking works either way.")
@@ -324,7 +384,7 @@ struct PanelView: View {
             Button("Open Full Disk Access Settings") { NSWorkspace.shared.open(Pane.fullDiskAccessURL) }
                 .buttonStyle(PanelButtonStyle(prominent: false))
         }
-        .padding(10)
+        .padding(8)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(.yellow.opacity(0.15), in: RoundedRectangle(cornerRadius: 8))
     }
@@ -335,17 +395,25 @@ struct PanelView: View {
             .foregroundStyle(Color.panelSecondary)
     }
 
-    /// One row for every watched app at once. It's shaded and says how many apps it
-    /// covers, so it doesn't read as one more app; under a switch that's on for some
-    /// apps and off for others, it says for how many.
+    /// One row for every watched app at once. It's shaded, has a stack where an app
+    /// has its icon, and says how many apps it covers, so it doesn't read as one more
+    /// app; under a switch that's on for some apps and off for others, it says for how
+    /// many.
     private func watchedHeader(_ watched: [Row]) -> some View {
         HStack(spacing: PanelLayout.columnSpacing) {
-            VStack(alignment: .leading, spacing: 0) {
-                Text(watched.isEmpty ? "Watched" : "All watched apps").font(.callout.weight(.semibold))
-                if !watched.isEmpty {
-                    Text(watched.count == 1 ? "Switches act on the one app" : "Switches act on all \(watched.count)")
-                        .font(.caption2).foregroundStyle(Color.panelSecondary)
+            HStack(spacing: PanelLayout.rowSpacing) {
+                Image(systemName: "square.stack.3d.up.fill")
+                    .foregroundStyle(Color.panelSecondary)
+                    .frame(width: PanelLayout.iconSize, height: PanelLayout.iconSize)
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 0) {
+                    Text(watched.isEmpty ? "Watched" : "All watched apps").font(.callout.weight(.semibold))
+                    if !watched.isEmpty {
+                        Text(watched.count == 1 ? "Switches act on the one app" : "Switches act on all \(watched.count)")
+                            .font(.caption2).foregroundStyle(Color.panelSecondary)
+                    }
                 }
+                .lineLimit(1)
             }
             .tip("Apps Revoke looks after: Revoke All Watched and the automatic options cover them. Right-click one to stop it or stop watching it, or choose in Settings.")
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -366,11 +434,11 @@ struct PanelView: View {
                 .frame(width: PanelLayout.columnWidth)
             }
         }
-        .padding(.vertical, 5)
+        .padding(.vertical, 4)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("All watched apps")
         // The shading reaches a little past the row without moving its columns.
-        .background(RoundedRectangle(cornerRadius: 8).fill(.quaternary.opacity(0.5)).padding(.horizontal, -6))
+        .background(RoundedRectangle(cornerRadius: 8).fill(.quaternary.opacity(0.5)).padding(.horizontal, -8))
     }
 
     /// How many watched apps have a column's switch on, of those it applies to, or nil
@@ -386,12 +454,13 @@ struct PanelView: View {
 
     private func row(_ row: Row) -> some View {
         HStack(spacing: PanelLayout.columnSpacing) {
-            label(row, caption: ([
+            // A line each: joined, they wrapped in the middle of a phrase.
+            label(row, captions: ([
                 AppInfo.role(row.client),
                 row.deadline.map { "Revokes at \($0.formatted(date: .omitted, time: .shortened))" },
             ] + [Pane.localNetwork, .internet].map { pane in
                 row.allowedUntil(pane).flatMap { $0 > model.clock ? "\(pane.title) until \($0.formatted(date: .omitted, time: .shortened))" : nil }
-            }).compactMap { $0 }.joined(separator: " · ").nilIfEmpty)
+            }).compactMap { $0 }, deadlineCaption: row.deadline == nil ? nil : AppInfo.role(row.client) == nil ? 0 : 1)
             ForEach(Pane.allCases) { pane in
                 cell(row, pane).frame(width: PanelLayout.columnWidth)
             }
@@ -423,7 +492,7 @@ struct PanelView: View {
     private func leftoverRow(_ row: Row) -> some View {
         let on = Pane.allCases.filter { $0 != .internet && row.isAllowed($0) }.map(\.shortTitle)
         return HStack(spacing: PanelLayout.columnSpacing) {
-            label(row, caption: on.isEmpty ? "Listed, switched off" : "\(on.formatted(.list(type: .and))) on")
+            label(row, captions: [on.isEmpty ? "Listed, switched off" : "\(on.formatted(.list(type: .and))) on"])
             Button("Remove") { model.removeLeftovers([row.client]) }
                 .buttonStyle(PanelButtonStyle(prominent: false))
                 .disabled(model.isRevoking)
@@ -432,19 +501,22 @@ struct PanelView: View {
         }
     }
 
-    private func label(_ row: Row, caption: String?) -> some View {
-        HStack(spacing: 8) {
+    /// An app's icon and name, with a short line under the name for each caption.
+    /// `deadlineCaption` is which of them, if any, says when the time limit ends.
+    private func label(_ row: Row, captions: [String], deadlineCaption: Int? = nil) -> some View {
+        HStack(spacing: PanelLayout.rowSpacing) {
             Image(nsImage: row.icon)
                 .resizable()
-                .frame(width: 20, height: 20)
+                .frame(width: PanelLayout.iconSize, height: PanelLayout.iconSize)
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 0) {
                 Text(row.name).lineLimit(1).truncationMode(.middle)
                     .tip("\(row.name) (\(row.client.key))")
-                if let caption {
+                ForEach(Array(captions.enumerated()), id: \.offset) { index, caption in
                     Text(caption).font(.caption2).foregroundStyle(Color.panelSecondary)
-                        .tip(row.deadline == nil ? caption
-                              : "The time limit in Settings switches this app's access off then.")
+                        .lineLimit(1)
+                        .tip(index == deadlineCaption ? "The time limit in Settings switches this app's access off then."
+                             : caption)
                 }
             }
         }
@@ -523,9 +595,10 @@ struct PanelView: View {
                 .foregroundStyle(Color.panelSecondary)
                 .tip("Revoke needs Full Disk Access to see this.")
         } else {
-            // A button, not a switch: it only ever takes access away.
+            // A button, not a switch: it only ever takes access away. With nothing
+            // to take, it isn't drawn: see PanelButtonStyle.isIdle.
             Button("Revoke") { model.revokeWatched(reason: nil) }
-                .buttonStyle(PanelButtonStyle(prominent: false, compact: true))
+                .buttonStyle(PanelButtonStyle(prominent: false, compact: true, isIdle: !isOn))
                 .disabled(model.isRevoking || !isOn)
                 .accessibilityLabel("Revoke all access for all watched apps")
                 .tip(isOn
@@ -547,7 +620,7 @@ struct PanelView: View {
                 .tip("Revoke needs Full Disk Access to see this.")
         } else {
             Button("Revoke") { model.revoke([row.client], panes: Pane.access, reason: nil) }
-                .buttonStyle(PanelButtonStyle(prominent: false, compact: true))
+                .buttonStyle(PanelButtonStyle(prominent: false, compact: true, isIdle: !isOn))
                 .disabled(model.isRevoking || !isOn)
                 .accessibilityLabel("Revoke all access for \(row.name)")
                 .tip(isOn
@@ -775,22 +848,22 @@ struct PanelButtonStyle: ButtonStyle {
     let prominent: Bool
     /// Small enough to sit in a column of the grid.
     var compact = false
+    /// Nothing for the button to act on. It isn't drawn, so a column of them is
+    /// empty except where there's something to do, rather than a stack of dimmed
+    /// buttons. It keeps its place, its tooltip, and its VoiceOver element.
+    var isIdle = false
     @Environment(\.isEnabled) private var isEnabled
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(prominent ? .body.weight(.medium) : compact ? .caption : .callout)
-            .foregroundStyle(prominent ? AnyShapeStyle(.white) : AnyShapeStyle(.primary))
+            .foregroundStyle(isIdle ? AnyShapeStyle(.clear) : prominent ? AnyShapeStyle(.white) : AnyShapeStyle(.primary))
             .padding(.horizontal, prominent ? 14 : compact ? 7 : 10)
             .padding(.vertical, prominent ? 6 : compact ? 3 : 4)
-            .background(prominent ? Color.panelProminent : Color.panelTrack.opacity(0.6), in: Capsule())
+            .background(isIdle ? Color.clear : prominent ? Color.panelProminent : Color.panelTrack.opacity(0.6), in: Capsule())
             .opacity(configuration.isPressed ? 0.7 : isEnabled ? 1 : 0.4)
             .contentShape(Capsule())
     }
-}
-
-private extension String {
-    var nilIfEmpty: String? { isEmpty ? nil : self }
 }
 
 /// The panel's own colors, measured against its background rather than left to the

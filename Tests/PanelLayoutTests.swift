@@ -1,4 +1,4 @@
-import CoreGraphics
+import AppKit
 import Foundation
 import Testing
 
@@ -28,6 +28,27 @@ struct PanelLayoutTests {
         #expect(panes[8] == .other)
         #expect(PanelLayout.width(ofColumns: 1) == PanelLayout.columnWidth)
         #expect(PanelLayout.width(ofColumns: 3) == 3 * PanelLayout.columnWidth + 2 * PanelLayout.columnSpacing)
+    }
+
+    @Test func eachGroupsNoteFitsBesideItsTitle() {
+        // The title and note share a line above their columns, so both have to fit it.
+        func width(_ text: String, _ font: NSFont) -> CGFloat {
+            (text as NSString).size(withAttributes: [.font: font]).width.rounded(.up)
+        }
+        let size = NSFont.preferredFont(forTextStyle: .caption1).pointSize
+        for group in PanelLayout.groups where !group.title.isEmpty {
+            let line = width(group.title, .systemFont(ofSize: size, weight: .semibold)) + PanelLayout.groupNoteSpacing
+                + width(group.note, .systemFont(ofSize: size, weight: .medium))
+            #expect(line <= PanelLayout.width(ofColumns: group.columns), "\(group.title)")
+        }
+    }
+
+    @Test func theLongestLineUnderANameFits() {
+        // At 800 points this line wrapped, and its row with it.
+        let font = NSFont.systemFont(ofSize: NSFont.preferredFont(forTextStyle: .caption2).pointSize, weight: .medium)
+        let longest = ("ChatGPT's computer use agent" as NSString).size(withAttributes: [.font: font]).width
+        #expect(longest <= PanelLayout.nameWidth(forPanelWidth: PanelLayout.preferredWidth))
+        #expect(PanelLayout.nameWidth(forPanelWidth: PanelLayout.minimumWidth) == PanelLayout.minimumNameWidth - PanelLayout.iconSize - PanelLayout.rowSpacing)
     }
 
     @Test func timeLeftReadsShortInASwitchAndInFullWhenSpoken() {

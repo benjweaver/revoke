@@ -171,6 +171,7 @@ panel_open() {
 
 # The x of a column's switch, counted from the right edge of the panel's window: 14
 # points of shadow, 16 of padding, then columns 56 wide with 4 between (PanelLayout).
+# The panel's width doesn't come into it: a wider panel only widens the names.
 column() {
 	local from_right
 	case $1 in
@@ -186,8 +187,11 @@ column() {
 # The summary row's switches sit this far below the top of the panel's window, shadow
 # included, while the status under the title is one line and nothing is on for now:
 # the strip that lists timed access pushes the grid down, so the run only clicks once
-# an allowance it asked for has ended.
-header_y=193
+# an allowance it asked for has ended. From the top of the panel's content the switch's
+# middle is 139 points down: 16 of padding, an 18-point title line, 12, 18 of group
+# titles, 8, 46 of column titles, 8, 4 of the row's own padding, and half the switch's
+# 18. The other 27 are the popover's shadow and arrow.
+header_y=166
 
 # Clicks the summary row's switch in a column, which acts on every watched app. The
 # last column is the Revoke button.
