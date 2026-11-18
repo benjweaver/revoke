@@ -51,6 +51,23 @@ enum PanelLayout {
         min(preferredWidth, max(minimumWidth, screenWidth - 2 * screenMargin))
     }
 
+    /// The largest ordinary window these processes have in a window list, in AppKit's
+    /// coordinates. Sheets and popovers are smaller, and menus sit on other layers.
+    static func mainWindowFrame(
+        in windows: [[String: Any]], ownedBy owners: Set<Int>, primaryScreenHeight: CGFloat
+    ) -> CGRect? {
+        let frames = windows.compactMap { window -> CGRect? in
+            guard let owner = window[kCGWindowOwnerPID as String] as? Int, owners.contains(owner),
+                  window[kCGWindowLayer as String] as? Int == 0,
+                  let bounds = window[kCGWindowBounds as String] as? [String: Any],
+                  let rect = CGRect(dictionaryRepresentation: bounds as CFDictionary), rect.width > 300, rect.height > 200
+            else { return nil }
+            // The window list counts down from the top of the first screen; AppKit counts up.
+            return CGRect(x: rect.minX, y: primaryScreenHeight - rect.maxY, width: rect.width, height: rect.height)
+        }
+        return frames.max { $0.width * $0.height < $1.width * $1.height }
+    }
+
     /// Where the drag-to-grant helper, of this size, goes by a window on a screen: the first of below,
     /// right, and left that fits, else over the window's bottom edge.
     static func helperOrigin(for size: CGSize, by window: CGRect, on screen: CGRect) -> CGPoint {

@@ -436,7 +436,10 @@ final class AccessModel: ObservableObject {
     /// has. When one ends, the filter's lists have changed too, so those are read again.
     private func readAllowances() async {
         let now = Date()
-        let read = (await filter.allowances() ?? Allowances()).inForce(at: now)
+        let answer = await filter.allowances()
+        // With the filter off nothing is on for now. With it on and no answer, the last
+        // answer stands, so the timer below asks again rather than stopping for good.
+        let read = filter.isOn ? allowances.replaced(by: answer, at: now) : Allowances()
         if read != allowances { allowances = read }
         clock = now
         allowanceTimer?.invalidate()
@@ -633,6 +636,8 @@ final class AccessModel: ObservableObject {
             case .success(let list):
                 settings.adoptLocalNetworkBlocked(list)
                 newlyBlocked = Set(installed).intersection(list).subtracting(wasBlocked)
+                // Blocking ends a block lifted for a while, so "On for now" lets go of it too.
+                await readAllowances()
             case .failure(let error):
                 filterFailure = error.localizedDescription
             }

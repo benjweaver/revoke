@@ -20,6 +20,13 @@ struct Allowances: Equatable, Sendable {
         Allowances(localNetwork: localNetwork.filter { $0.value > now }, internet: internet.filter { $0.value > now })
     }
 
+    /// What to show after asking the filter again: its answer, or, when it didn't
+    /// answer, what it said before. A filter that's restarting misses a question, and
+    /// the access it gave for a while is still on, so the panel goes on saying so.
+    func replaced(by answer: Allowances?, at now: Date) -> Allowances {
+        (answer ?? self).inForce(at: now)
+    }
+
     /// Whole minutes left, rounded up so the last minute reads "1" and never "0".
     static func minutesLeft(until end: Date, now: Date) -> Int {
         max(1, Int((end.timeIntervalSince(now) / 60).rounded(.up)))

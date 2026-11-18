@@ -152,10 +152,10 @@ final class AccessRequestPrompt {
         case .internet:
             model.allowInternet(held, minutes: request.minutes, name: name)
         case .pane(let pane):
-            if let url = pane.settingsURL {
-                // With the asking app's icon alongside to drag in, when Revoke knows which it is.
-                if let asking = apps.first { model.openSettings(toGrant: pane, for: .bundle(asking)) }
-                else { NSWorkspace.shared.open(url) }
+            if pane.settingsURL != nil {
+                // With the icon alongside to drag in: the app the question named and whose
+                // access was checked above, not a helper or shell nearer the command.
+                model.openSettings(toGrant: pane, for: .bundle(app))
                 model.note("Opened System Settings for you to allow \(pane.title) for \(name)")
             }
         }

@@ -56,6 +56,36 @@ struct PanelLayoutTests {
         #expect(Allowances().isEmpty && Allowances().nextEnd == nil)
     }
 
+    @Test func allowancesStandWhenTheFilterDoesNotAnswer() {
+        let now = Date(timeIntervalSince1970: 1_000_000)
+        let known = Allowances(localNetwork: ["com.example.a": now.addingTimeInterval(600)],
+                               internet: ["com.example.b": now.addingTimeInterval(-1)])
+        // No answer: what was known stays, less what has ended since.
+        #expect(known.replaced(by: nil, at: now) == Allowances(localNetwork: ["com.example.a": now.addingTimeInterval(600)]))
+        // An answer replaces it whole, an empty one included.
+        #expect(known.replaced(by: Allowances(), at: now).isEmpty)
+        let answer = Allowances(internet: ["com.example.c": now.addingTimeInterval(60)])
+        #expect(known.replaced(by: answer, at: now) == answer)
+    }
+
+    @Test func theGrantHelperFindsSystemSettingsByProcessNotName() {
+        func window(_ pid: Int, _ name: String, layer: Int = 0, _ x: Int, _ y: Int, _ width: Int, _ height: Int) -> [String: Any] {
+            [kCGWindowOwnerPID as String: pid, kCGWindowOwnerName as String: name, kCGWindowLayer as String: layer,
+             kCGWindowBounds as String: ["X": x, "Y": y, "Width": width, "Height": height]]
+        }
+        let windows = [
+            window(7, "Finder", 0, 0, 1400, 900),
+            // A sheet, a menu on another layer, then the window itself, named in German.
+            window(42, "Systemeinstellungen", 200, 200, 400, 180),
+            window(42, "Systemeinstellungen", layer: 101, 0, 0, 900, 700),
+            window(42, "Systemeinstellungen", 100, 50, 720, 500),
+        ]
+        // The list counts down from the top of the first screen; AppKit counts up.
+        #expect(PanelLayout.mainWindowFrame(in: windows, ownedBy: [42], primaryScreenHeight: 900)
+                == CGRect(x: 100, y: 350, width: 720, height: 500))
+        #expect(PanelLayout.mainWindowFrame(in: windows, ownedBy: [], primaryScreenHeight: 900) == nil)
+    }
+
     @Test func staysOnAShortScreen() {
         // A virtual machine's 500-point screen leaves 476 under the menu bar.
         #expect(PanelLayout.maxHeight(forScreenHeight: 476) < 476)

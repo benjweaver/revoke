@@ -62,6 +62,8 @@ final class GrantHelper {
         let timer = Timer(timeInterval: 0.4, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated {
                 guard let self else { return }
+                // Closed with its own close button: nothing is left to keep in place.
+                guard self.panel?.isVisible == true else { return self.close() }
                 if isGranted() { return self.close() }
                 // Dropped, on the list or not: macOS takes it from here.
                 if self.dragBegan, NSEvent.pressedMouseButtons == 0 { return self.close() }
@@ -104,19 +106,14 @@ final class GrantHelper {
 
     /// System Settings' main window, in AppKit's coordinates, read from the window list.
     /// The bounds and owner are there for any app to read; only window titles and
-    /// contents need Screen Recording.
+    /// contents need Screen Recording. The owner is matched by process: its name in
+    /// the list is in the person's language, and the bundle ID is the same in all.
     private static func settingsFrame() -> CGRect? {
         guard let list = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID)
-                as? [[CFString: Any]], let primary = NSScreen.screens.first else { return nil }
-        let frames = list.compactMap { window -> CGRect? in
-            guard window[kCGWindowOwnerName] as? String == "System Settings", window[kCGWindowLayer] as? Int == 0,
-                  let bounds = window[kCGWindowBounds] as? NSDictionary,
-                  let rect = CGRect(dictionaryRepresentation: bounds), rect.width > 300, rect.height > 200
-            else { return nil }
-            // The window list counts down from the top of the first screen; AppKit counts up.
-            return CGRect(x: rect.minX, y: primary.frame.maxY - rect.maxY, width: rect.width, height: rect.height)
-        }
-        return frames.max { $0.width * $0.height < $1.width * $1.height }
+                as? [[String: Any]], let primary = NSScreen.screens.first else { return nil }
+        let owners = NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.systempreferences")
+            .map { Int($0.processIdentifier) }
+        return PanelLayout.mainWindowFrame(in: list, ownedBy: Set(owners), primaryScreenHeight: primary.frame.maxY)
     }
 }
 
