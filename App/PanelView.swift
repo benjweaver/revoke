@@ -30,8 +30,9 @@ struct PanelView: View {
         // background color. The glass takes its lightness from what's behind the panel
         // (in the light appearance over a dark desktop it went mid-gray, with dark text
         // on it at about 2:1), and macOS has no way for an app to tint a popover's glass
-        // or learn how dark it is. The veil keeps the ground within a range the text
-        // colors are checked against: see PanelPalette. A solid ground stands in for
+        // or learn how dark it is. The veil is as thin as the measured limits of the glass
+        // allow, and keeps the ground within a range the text colors are checked
+        // against: see PanelPalette. A solid ground stands in for
         // someone who has asked macOS for less transparency or more contrast.
         .background {
             Color(nsColor: .windowBackgroundColor)
@@ -908,7 +909,7 @@ struct PanelButtonStyle: ButtonStyle {
             .foregroundStyle(isIdle ? Color.clear : prominent ? Color.white : Color.panelPrimary)
             .padding(.horizontal, prominent ? 14 : compact ? 7 : 10)
             .padding(.vertical, prominent ? 6 : compact ? 3 : 4)
-            .background(isIdle ? Color.clear : prominent ? Color.panelProminent : Color.panelTrack.opacity(PanelPalette.buttonOpacity), in: Capsule())
+            .background(isIdle ? Color.clear : prominent ? Color.panelProminent : Color.panelButton.opacity(PanelPalette.buttonOpacity), in: Capsule())
             .opacity(configuration.isPressed ? 0.7 : isEnabled ? 1 : 0.4)
             .contentShape([.interaction, .focusEffect], Capsule())
     }
@@ -932,8 +933,10 @@ extension Color {
     static let panelPrimary = panel(PanelPalette.primary)
     /// Captions, column titles, and notes.
     static let panelSecondary = panel(PanelPalette.secondary)
-    /// A switch that's off, and the plain buttons.
+    /// A switch that's off.
     static let panelTrack = panel(PanelPalette.track)
+    /// The plain buttons' fill.
+    static let panelButton = panel(PanelPalette.button)
     /// The one filled button.
     static let panelProminent = Color(
         .sRGB, red: PanelPalette.prominent.red, green: PanelPalette.prominent.green, blue: PanelPalette.prominent.blue)
