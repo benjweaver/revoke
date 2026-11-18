@@ -66,7 +66,8 @@ final class LinkPrompt {
             warning += " This \(link.isFile ? "path" : "link") is long. Scroll through all of it before you decide."
         }
         warning += Self.omission(shown)
-        alert.accessoryView = Self.accessory(shown: shown.text, warning: warning, question: "Open \(name)?")
+        alert.accessoryView = Self.accessory(shown: shown.text, warning: warning, question: "Open \(name)?",
+                                             label: link.isFile ? "The file's path" : "The link")
         // No comes first, so it's the default and Return says no.
         alert.addButton(withTitle: "No")
         alert.addButton(withTitle: "Yes").keyEquivalent = ""
@@ -74,7 +75,7 @@ final class LinkPrompt {
         alert.window.level = .floating
         NSApp.activate()
         Self.showFromTheTop(alert)
-        let answer = alert.runModal()
+        let answer = Self.runModal(alert)
 
         let what = link.isFile ? "a file" : "a link"
         guard answer == .alertSecondButtonReturn else {
@@ -127,6 +128,24 @@ final class LinkPrompt {
         alert.runModal()
     }
 
+    /// Runs a question whose first button is No, with Escape saying no as well. An
+    /// alert gives Escape only to a button named Cancel, and No already has Return,
+    /// so without this Escape did nothing but beep. Yes still has no key of its own.
+    static func runModal(_ alert: NSAlert) -> NSApplication.ModalResponse {
+        // A dialog with no title is announced as only "dialog".
+        alert.window.setAccessibilityTitle("Revoke")
+        let window = alert.window.windowNumber
+        let escape = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak alert] event in
+            let isEscape = event.keyCode == 53 && event.windowNumber == window
+                && event.modifierFlags.intersection(.deviceIndependentFlagsMask).subtracting([.numericPad, .function]).isEmpty
+            guard isEscape else { return event }
+            MainActor.assumeIsolated { alert?.buttons.first?.performClick(nil) }
+            return nil
+        }
+        defer { if let escape { NSEvent.removeMonitor(escape) } }
+        return alert.runModal()
+    }
+
     /// Starts the box at the link's first line. As the alert comes up macOS gives the
     /// text keyboard focus and centers it, which hides the start of a long link, so this
     /// scrolls back on the first pass of the alert's own run loop.
@@ -152,10 +171,13 @@ final class LinkPrompt {
     }
 
     /// The link in a box of its own that scrolls when it's long, then the warning.
-    static func accessory(shown: String, warning: String, question: String) -> NSView {
+    /// `label` is what VoiceOver calls the box, which takes the keyboard's focus as
+    /// the question opens and would otherwise be read as text of no stated kind.
+    static func accessory(shown: String, warning: String, question: String, label: String) -> NSView {
         let width: CGFloat = 400
         let text = NSTextView(frame: NSRect(x: 0, y: 0, width: width, height: 10))
         text.string = shown
+        text.setAccessibilityLabel(label)
         text.font = .monospacedSystemFont(ofSize: NSFont.smallSystemFontSize, weight: .regular)
         text.isEditable = false
         text.isSelectable = true

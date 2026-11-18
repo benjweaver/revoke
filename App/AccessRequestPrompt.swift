@@ -131,7 +131,8 @@ final class AccessRequestPrompt {
         if isClaimed { warning += " Revoke couldn't tell which app sent this, so \(name) is only what the request says." }
         let reason = request.reason.map { Links.shown($0).text } ?? "It gave no reason."
         let question = what == .internet ? "Allow the whole internet?" : "Allow \(what.title)?"
-        alert.accessoryView = LinkPrompt.accessory(shown: reason, warning: warning, question: question)
+        alert.accessoryView = LinkPrompt.accessory(shown: reason, warning: warning, question: question,
+                                                   label: "The reason \(name) gave")
         // No comes first, so it's the default and Return says no.
         alert.addButton(withTitle: "No")
         alert.addButton(withTitle: "Yes").keyEquivalent = ""
@@ -139,7 +140,7 @@ final class AccessRequestPrompt {
         alert.window.level = .floating
         NSApp.activate()
 
-        guard alert.runModal() == .alertSecondButtonReturn else {
+        guard LinkPrompt.runModal(alert) == .alertSecondButtonReturn else {
             declined[key] = Date()
             log.notice("Turned down \(name, privacy: .public) asking for \(what.title, privacy: .public)")
             model.note("Turned down \(name) asking for \(what.title)")

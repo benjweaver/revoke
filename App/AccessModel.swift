@@ -65,7 +65,16 @@ struct Activity {
 @MainActor
 final class AccessModel: ObservableObject {
     @Published private(set) var snapshot = Snapshot()
-    @Published private(set) var lastActivity: Activity?
+    /// Said through VoiceOver as it changes: the panel shows it in a line at the
+    /// bottom, far from the switch that was pressed, and nothing else says a revoke
+    /// finished or failed.
+    @Published private(set) var lastActivity: Activity? {
+        didSet {
+            guard let lastActivity else { return }
+            Announcement.post(lastActivity.isError ? "Failed: \(lastActivity.text)" : lastActivity.text,
+                              isUrgent: lastActivity.isError)
+        }
+    }
     @Published private(set) var isRevoking = false
     /// Bundle IDs of the apps running now, so the lock and the panel's dots follow
     /// apps as they launch and quit, even while the panel is open.
