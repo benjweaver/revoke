@@ -83,7 +83,7 @@ enum PanelLayout {
         return frames.max { $0.width * $0.height < $1.width * $1.height }
     }
 
-    /// Where the drag-to-grant helper, of this size, goes by a window on a screen: the first of below,
+    /// Where the helper for granting access, of this size, goes by a window on a screen: the first of below,
     /// right, and left that fits, else over the window's bottom edge.
     static func helperOrigin(for size: CGSize, by window: CGRect, on screen: CGRect) -> CGPoint {
         let gap: CGFloat = 8

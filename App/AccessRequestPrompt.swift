@@ -154,7 +154,7 @@ final class AccessRequestPrompt {
             model.allowInternet(held, minutes: request.minutes, name: name)
         case .pane(let pane):
             if pane.settingsURL != nil {
-                // With the icon alongside to drag in: the app the question named and whose
+                // With the steps alongside for adding it back: the app the question named and whose
                 // access was checked above, not a helper or shell nearer the command.
                 model.openSettings(toGrant: pane, for: .bundle(app))
                 model.note("Opened System Settings for you to allow \(pane.title) for \(name)")

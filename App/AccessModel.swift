@@ -363,7 +363,7 @@ final class AccessModel: ObservableObject {
     }
 
     /// Opens System Settings at a pane for the person to give an app access, with the
-    /// app's icon alongside to drag into the list.
+    /// steps alongside for adding the app back to the list.
     func openSettings(toGrant pane: Pane, for client: Client) {
         guard let url = pane.settingsURL else { return }
         NSWorkspace.shared.open(url)

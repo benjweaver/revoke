@@ -18,11 +18,12 @@ from its section below.
   under the panel says what each shape of switch means.
 - The Watched row says how many apps it covers, and a switch that's on for only some
   of them sits in the middle and says for how many.
-- Giving access back is a drag. Revoking takes an app off a privacy list altogether,
-  so switching it on again meant the + button and a file browser. Revoke now puts a
-  small window by System Settings with the app's icon to drop on the list. It leaves
-  once the icon is dropped, so it's never over the password sheet, and Show in Finder
-  is there for anyone who'd rather not drag. A request you say yes to gets one too.
+- Giving access back takes three steps you don't have to hunt for. Revoking takes an
+  app off a privacy list altogether, so switching it on again meant the + button and
+  finding the app in a file browser. Revoke now puts a small window by System Settings
+  with the steps and the app's location to copy: click +, press ⇧⌘G, paste, and open.
+  It works from the keyboard, and it doesn't rely on dropping an app on the list,
+  which macOS 27.3 stops accepting. A request you say yes to gets one too.
 
 ### Fixed
 
