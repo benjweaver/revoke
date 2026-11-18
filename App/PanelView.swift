@@ -10,6 +10,8 @@ struct PanelView: View {
     /// The tallest the panel may be on the screen it opens on. Past that it scrolls.
     var maxHeight: CGFloat = .infinity
     let openSettings: () -> Void
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.colorSchemeContrast) private var contrast
 
     /// Past this many rows the list scrolls, so the panel stays on screen.
     private static let rowsBeforeScrolling = 10
@@ -23,9 +25,11 @@ struct PanelView: View {
         }
         .frame(width: width)
         .frame(maxHeight: maxHeight)
-        // A solid ground. A popover is see-through by default, and over a dark desktop
-        // in the light appearance it went mid-gray, with the app names gray on gray.
-        .background(Color(nsColor: .windowBackgroundColor))
+        // The popover's own Liquid Glass, as macOS draws it. A solid ground stands in
+        // only for someone who has asked macOS for less transparency or more contrast.
+        .background {
+            if reduceTransparency || contrast == .increased { Color(nsColor: .windowBackgroundColor) }
+        }
         .tipHost()
     }
 
