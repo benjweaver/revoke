@@ -50,19 +50,35 @@ enum PanelPalette {
 
     // MARK: - The ground
 
-    /// The darkest and lightest the glass is taken to get under the veil. Nobody has
-    /// measured the real limits, so these are black and white: whatever is behind the
-    /// panel, the text holds. Measured limits would let the veil be thinner.
-    static let glass = Pair(light: 0.0...1.0, dark: 0.0...1.0)
+    /// What Scripts/contrast.py measured in screenshots of the panel over a black
+    /// window and over a white one, in each appearance: the plain ground, as a gray
+    /// from 0 to 1, under the veil those screenshots were taken with.
+    struct Measurement: Sendable {
+        let veilOpacity: Double
+        let overBlack: Double
+        let overWhite: Double
+    }
+
+    static let measured = Pair(light: Measurement(veilOpacity: 0.7, overBlack: 0.859, overWhite: 1.0),
+                               dark: Measurement(veilOpacity: 0.8, overBlack: 0.122, overWhite: 0.188))
+
+    /// The darkest and lightest the glass is taken to get under the veil. Taking the
+    /// veil back out of the measurements leaves the glass itself: in the light
+    /// appearance 0.53 over black and 1.0 over white, and in the dark 0.14 over black
+    /// and 0.47 over white. So the glass keeps to its appearance's half of the grays,
+    /// and the veil only has to cover that half. Each range is a little wider than
+    /// what was measured, because it was measured in one VM on one day.
+    static let glass = Pair(light: 0.50...1.0, dark: 0.12...0.50)
 
     /// NSColor.windowBackgroundColor in each appearance, which the veil is drawn in.
     static let windowBackground = Pair(light: 1.0, dark: 0.118)
 
-    /// How opaque the veil is. The rest is the glass showing through. The dark veil is
-    /// thicker because a light desktop behind dark glass is the harder case: the dark
+    /// How opaque the veil is. The rest is the glass showing through. These are about
+    /// the thinnest at which the small gray text still holds 5:1 on the Watched row's
+    /// shading with the glass at its worst. The dark veil is thicker because the dark
     /// window background is far from black, so it takes more of it to hold a bright
     /// ground down than it takes white to hold a dark one up.
-    static let veilOpacity = Pair(light: 0.7, dark: 0.8)
+    static let veilOpacity = Pair(light: 0.4, dark: 0.5)
 
     /// The Watched row's shading: the text color at this opacity over the ground.
     static let shadeOpacity = 0.05
@@ -84,22 +100,33 @@ enum PanelPalette {
 
     /// Captions, column titles, and notes. The system's secondary label color is half
     /// see-through and measures under 4:1 even on a plain white window, so no semantic
-    /// color can do this job. These are as soft as 4.5:1 allows on the worst ground.
-    static let secondary = Pair(light: 0.24, dark: 0.80)
+    /// color can do this job. These are a step nearer the primary color than a solid
+    /// window would need, which is what lets the veil be as thin as it is.
+    static let secondary = Pair(light: 0.20, dark: 0.86)
 
     /// Something failed. The system's red is about 3.5:1 on white, so this is a red dark
     /// enough for the darkest light ground, and one light enough for the lightest dark.
-    static let error = Pair(light: RGB(red: 0.56, green: 0, blue: 0),
-                            dark: RGB(red: 1, green: 0.68, blue: 0.65))
+    static let error = Pair(light: RGB(red: 0.50, green: 0, blue: 0),
+                            dark: RGB(red: 1, green: 0.75, blue: 0.72))
 
     // MARK: - Controls
 
-    /// A switch that's off, and at 60% the plain buttons. Not text: it only has to stay
-    /// apart from the ground at both ends, which the old lighter and darker grays, made
-    /// for a solid window, didn't.
-    static let track = Pair(light: 0.55, dark: 0.42)
+    /// A switch that's off. Not text, but the shape of a control, which wants about
+    /// 3:1 against what's around it. In the light appearance the white knob is lost on
+    /// the ground, so the track is dark enough to hold 3:1 at both ends. In the dark
+    /// the knob is what stands out, at 9:1 or more, and the track has to stay 3:1 from
+    /// the knob as well: this gray is 3:1 or better against the ground except over the
+    /// brightest desktops, where it falls to about 2.2:1 and the knob carries the switch.
+    static let track = Pair(light: 0.34, dark: 0.56)
+
+    /// The knob of a switch.
+    static let knob = RGB.gray(1)
+
+    /// The plain buttons' fill, at `buttonOpacity`. Their labels are what has to hold:
+    /// a fill 3:1 from the ground would cost the label its 4.5:1 in the dark appearance.
+    static let button = Pair(light: 0.55, dark: 0.42)
     static let buttonOpacity = 0.6
 
-    /// The one filled button. White on the system's blue is about 4:1; on this, 5.4:1.
+    /// The one filled button. White on the system's blue is about 4:1; on this, 5.5:1.
     static let prominent = RGB(red: 0, green: 0.39, blue: 0.85)
 }

@@ -2,12 +2,15 @@ import AppKit
 import Testing
 
 /// The panel's text holds 4.5:1 on its glass whatever is behind it. The glass can't be
-/// measured from here, so these work out the two ends of the ground the veil allows
-/// and check every text color on both, in the light appearance and the dark.
+/// measured from here, so these take its limits from screenshots (Scripts/contrast.py),
+/// work out the two ends of the ground the veil allows, and check every text color on
+/// both, in the light appearance and the dark.
 struct PanelPaletteTests {
     typealias RGB = PanelPalette.RGB
 
     private static let minimum = 4.5
+    /// What the panel's own grays and reds are held to, for some room over the minimum.
+    private static let comfortable = 5.0
 
     /// A system color as macOS resolves it in one appearance.
     private func system(_ color: NSColor, isDark: Bool) -> RGB {
@@ -43,6 +46,20 @@ struct PanelPaletteTests {
         }
     }
 
+    /// The range the glass is taken to cover has to contain the glass the screenshots
+    /// showed: the measured ground with the veil it was drawn under taken back out.
+    @Test func theGlassRangeCoversWhatWasMeasured() {
+        for isDark in [false, true] {
+            let measured = PanelPalette.measured.value(isDark: isDark)
+            let veil = PanelPalette.windowBackground.value(isDark: isDark)
+            let range = PanelPalette.glass.value(isDark: isDark)
+            for ground in [measured.overBlack, measured.overWhite] {
+                let glass = (ground - veil * measured.veilOpacity) / (1 - measured.veilOpacity)
+                #expect(range.contains(glass), "glass measured at \(glass) in \(isDark ? "dark" : "light")")
+            }
+        }
+    }
+
     @Test func textHoldsOnEveryGround() {
         for isDark in [false, true] {
             for ground in grounds(isDark) {
@@ -52,13 +69,13 @@ struct PanelPaletteTests {
                 ]
                 for (name, color) in colors {
                     let ratio = color.contrast(with: ground)
-                    #expect(ratio >= Self.minimum, "\(name) is \(ratio):1 on \(ground) in \(isDark ? "dark" : "light")")
+                    #expect(ratio >= Self.comfortable, "\(name) is \(ratio):1 on \(ground) in \(isDark ? "dark" : "light")")
                 }
             }
             // The line that says something failed is never on the shading.
             for ground in plainGrounds(isDark) {
                 let ratio = PanelPalette.error.value(isDark: isDark).contrast(with: ground)
-                #expect(ratio >= Self.minimum, "error is \(ratio):1 on \(ground) in \(isDark ? "dark" : "light")")
+                #expect(ratio >= Self.comfortable, "error is \(ratio):1 on \(ground) in \(isDark ? "dark" : "light")")
             }
         }
     }
@@ -82,27 +99,36 @@ struct PanelPaletteTests {
         }
     }
 
+    /// The plain buttons sit on the plain ground, the Watched row's shading, and the
+    /// orange strip (End Now).
     @Test func buttonLabelsHoldOnTheirFills() {
         let white = RGB.gray(1)
         #expect(white.contrast(with: PanelPalette.prominent) >= Self.minimum)
         for isDark in [false, true] {
-            let track = RGB.gray(PanelPalette.track.value(isDark: isDark))
-            for ground in grounds(isDark) {
-                let fill = track.over(ground, opacity: PanelPalette.buttonOpacity)
+            let button = RGB.gray(PanelPalette.button.value(isDark: isDark))
+            let strip = plainGrounds(isDark).map { system(.systemOrange, isDark: isDark).over($0, opacity: 0.16) }
+            for ground in grounds(isDark) + strip {
+                let fill = button.over(ground, opacity: PanelPalette.buttonOpacity)
                 let ratio = primary(isDark).contrast(with: fill)
                 #expect(ratio >= Self.minimum, "a button's label is \(ratio):1 on \(fill) in \(isDark ? "dark" : "light")")
             }
         }
     }
 
-    /// An off switch isn't text, and its white knob shows where the track doesn't, but
-    /// the track shouldn't melt into the ground at either end.
+    /// An off switch isn't text, but its shape should be about 3:1 against the ground.
+    /// In the light appearance the track does that alone, on every ground. In the dark
+    /// the white knob does it, the track stays 3:1 from the knob so the knob's place
+    /// can be read, and the track may come as near the lightest ground as 2:1.
     @Test func anOffSwitchStaysApartFromTheGround() {
         for isDark in [false, true] {
             let track = RGB.gray(PanelPalette.track.value(isDark: isDark))
-            for ground in PanelPalette.grounds(isDark: isDark) {
+            #expect(PanelPalette.knob.contrast(with: track) >= 3, "the knob on its track in \(isDark ? "dark" : "light")")
+            for ground in grounds(isDark) {
                 let ratio = track.contrast(with: ground)
-                #expect(ratio >= 1.5, "an off switch is \(ratio):1 on \(ground) in \(isDark ? "dark" : "light")")
+                #expect(ratio >= (isDark ? 2 : 3), "an off switch is \(ratio):1 on \(ground) in \(isDark ? "dark" : "light")")
+                if isDark {
+                    #expect(PanelPalette.knob.contrast(with: ground) >= 3, "the knob on \(ground)")
+                }
             }
         }
     }
