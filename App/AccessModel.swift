@@ -310,15 +310,20 @@ final class AccessModel: ObservableObject {
         client.bundleID.map(runningIDs.contains) ?? false
     }
 
+    /// Watched apps with the local network or the whole internet on only for now.
+    var onForNowNames: [String] {
+        rows(watched: true)
+            .filter { row in
+                [Pane.localNetwork, .internet].contains { pane in
+                    row.isAllowed(pane) && row.allowedUntil(pane).map { $0 > clock } == true
+                }
+            }
+            .map(\.name)
+    }
+
     var statusText: String {
-        guard snapshot.canReadTCC else { return "Needs Full Disk Access to show status" }
-        let exposed = exposedNames
-        if !exposed.isEmpty {
-            return "\(exposed.formatted(.list(type: .and))) \(exposed.count == 1 ? "has" : "have") access"
-        }
-        let running = Set(runningNames).sorted()
-        if !running.isEmpty { return "\(running.formatted(.list(type: .and))) \(running.count == 1 ? "is" : "are") running" }
-        return "Watched apps are locked down"
+        Allowances.status(
+            canReadTCC: snapshot.canReadTCC, exposed: exposedNames, running: runningNames, onForNow: onForNowNames)
     }
 
     /// Every installed app the settings could list, watched ones first.

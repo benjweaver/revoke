@@ -67,6 +67,29 @@ struct PanelLayoutTests {
         #expect(Allowances.spoken(minutes: 125) == "2 hours 5 minutes")
     }
 
+    @Test func theStatusNeverSaysLockedDownWhileAccessIsOnForNow() {
+        func status(exposed: [String] = [], running: [String] = [], onForNow: [String] = [], canReadTCC: Bool = true) -> String {
+            Allowances.status(canReadTCC: canReadTCC, exposed: exposed, running: running, onForNow: onForNow)
+        }
+        #expect(status() == "Watched apps are locked down")
+        // The panel lists this access right under the status, so the status names it.
+        #expect(status(onForNow: ["Claude"]) == "Claude has access for now")
+        // An app with both the local network and the internet for now is named once.
+        #expect(status(onForNow: ["Claude", "ChatGPT", "Claude"]) == "ChatGPT and Claude have access for now")
+        #expect(status(onForNow: ["B", "C", "A"]) == "A, B, and C have access for now")
+        // What opens the lock comes first, as before.
+        #expect(status(running: ["Claude", "Claude"], onForNow: ["ChatGPT"]) == "Claude is running")
+        #expect(status(exposed: ["Claude"], running: ["ChatGPT"], onForNow: ["ChatGPT"]) == "Claude has access")
+        #expect(status(onForNow: ["Claude"], canReadTCC: false) == "Needs Full Disk Access to show status")
+    }
+
+    @Test func theColumnTitlesKeepTheirHeight() {
+        // The escape test clicks the summary row by its distance from the panel's top,
+        // which counts 46 points of column titles: a symbol, 4, and two lines of title.
+        let line = NSLayoutManager().defaultLineHeight(for: .preferredFont(forTextStyle: .caption2))
+        #expect(PanelLayout.columnSymbolHeight + 4 + 2 * line == 46)
+    }
+
     @Test func allowancesDropWhatHasEnded() {
         let now = Date(timeIntervalSince1970: 1_000_000)
         let all = Allowances(localNetwork: ["com.example.a": now.addingTimeInterval(-1)],

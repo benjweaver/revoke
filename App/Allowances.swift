@@ -33,9 +33,28 @@ struct Allowances: Equatable, Sendable {
     }
 
     /// The time left, short enough to sit inside a switch: "38m", or "2h" from 100
-    /// minutes up. The exact end time is in the row's note and the tooltip.
+    /// minutes up. The exact end time is in the list above the grid and the tooltip.
     static func compact(minutes: Int) -> String {
         minutes < 100 ? "\(minutes)m" : "\(Int((Double(minutes) / 60).rounded()))h"
+    }
+
+    /// One short sentence for the panel's title line and the menu bar lock, from the
+    /// names of the watched apps each thing is true of. "Locked down" is only said
+    /// when nothing is on for now either: the panel lists that access right under
+    /// this line, and the two read as a contradiction. It's here, apart from the
+    /// model, so the tests can reach it.
+    static func status(canReadTCC: Bool, exposed: [String], running: [String], onForNow: [String]) -> String {
+        guard canReadTCC else { return "Needs Full Disk Access to show status" }
+        if !exposed.isEmpty {
+            return "\(exposed.formatted(.list(type: .and))) \(exposed.count == 1 ? "has" : "have") access"
+        }
+        let running = Set(running).sorted()
+        if !running.isEmpty { return "\(running.formatted(.list(type: .and))) \(running.count == 1 ? "is" : "are") running" }
+        let onForNow = Set(onForNow).sorted()
+        if !onForNow.isEmpty {
+            return "\(onForNow.formatted(.list(type: .and))) \(onForNow.count == 1 ? "has" : "have") access for now"
+        }
+        return "Watched apps are locked down"
     }
 
     /// "38 minutes", "1 minute", "2 hours 5 minutes".

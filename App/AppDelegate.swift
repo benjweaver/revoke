@@ -131,6 +131,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         ])
         button.toolTip = !model.snapshot.canReadTCC ? "Revoke: \(model.statusText)"
             : isOpen ? "Revoke: \(model.statusText). The lock stays open until no watched app \(what)."
+            // Network access that's on for now doesn't open the lock. The status names
+            // it, so this says what the lock goes by rather than "no app has access".
+            : !model.onForNowNames.isEmpty
+            ? "Revoke: \(model.statusText). The lock is closed: no watched app is running\(settings.lockFollowsRunningOnly ? "" : " or has Device Control, Screen Recording, or Input Monitoring")."
             : "Revoke: \(model.statusText). No watched app \(what)."
     }
 

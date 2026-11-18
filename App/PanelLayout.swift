@@ -12,6 +12,10 @@ enum PanelLayout {
     static let rowSpacing: CGFloat = 8
     /// An app's icon. The gap before its name is rowSpacing.
     static let iconSize: CGFloat = 20
+    /// The box each column title's symbol is centered in. The symbols are 13 to 17
+    /// points tall; at 16 the titles' row is as tall as it was (46 points), which the
+    /// escape test's `header_y` counts on.
+    static let columnSymbolHeight: CGFloat = 16
     /// Between a group's title and the note beside it.
     static let groupNoteSpacing: CGFloat = 4
     /// Each Pane column plus the horizontal All Access column.

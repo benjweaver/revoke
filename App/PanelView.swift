@@ -59,10 +59,12 @@ struct PanelView: View {
                 } else {
                     list
                 }
-                // Right under the switches it explains, and only while there's
-                // something to explain.
-                key(watched: watched, others: others)
             }
+            // Under the switches it explains, and only while there's something to
+            // explain. It keeps a section's distance from the last row and sits at the
+            // columns' end of the panel: close under the last app's name, it read as a
+            // line about that app.
+            key(watched: watched, others: others)
 
             Divider()
             footer
@@ -137,7 +139,9 @@ struct PanelView: View {
 
     /// The titles sit outside the list so they stay put while it scrolls.
     private var columnTitles: some View {
-        HStack(spacing: PanelLayout.columnSpacing) {
+        // From the top, so a title that takes two lines doesn't push its symbol above
+        // the others.
+        HStack(alignment: .top, spacing: PanelLayout.columnSpacing) {
             Spacer()
             ForEach(Pane.allCases) { pane in
                 columnTitle(symbol: pane.symbol, title: pane.shortTitle, tip: pane.explanation)
@@ -253,6 +257,7 @@ struct PanelView: View {
             .font(.caption2)
             .foregroundStyle(Color.panelSecondary)
             .lineLimit(1)
+            .frame(maxWidth: .infinity, alignment: .trailing)
             // The key explains shapes. VoiceOver hears each switch's state in words, so
             // the key would only be one more stop on the way out of the panel.
             .accessibilityHidden(true)
@@ -315,7 +320,9 @@ struct PanelView: View {
 
     private func columnTitle(symbol: String, title: String, tip: String) -> some View {
         VStack(spacing: 4) {
-            Image(systemName: symbol).accessibilityHidden(true)
+            // The symbols differ in height by a few points. One height for all of them
+            // puts their middles on a line, and the titles' first lines on another.
+            Image(systemName: symbol).frame(height: PanelLayout.columnSymbolHeight).accessibilityHidden(true)
             Text(title).font(.caption2).lineLimit(2).multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -477,13 +484,14 @@ struct PanelView: View {
 
     private func row(_ row: Row) -> some View {
         HStack(spacing: PanelLayout.columnSpacing) {
-            // A line each: joined, they wrapped in the middle of a phrase.
-            label(row, captions: ([
+            // A line each: joined, they wrapped in the middle of a phrase. Access that's
+            // on for now has no line here: the list at the top says when it ends, and
+            // the switch shows the time left, so a third copy only made the row taller
+            // than its neighbors.
+            label(row, captions: [
                 AppInfo.role(row.client),
                 row.deadline.map { "Revokes at \($0.formatted(date: .omitted, time: .shortened))" },
-            ] + [Pane.localNetwork, .internet].map { pane in
-                row.allowedUntil(pane).flatMap { $0 > model.clock ? "\(pane.title) until \($0.formatted(date: .omitted, time: .shortened))" : nil }
-            }).compactMap { $0 }, deadlineCaption: row.deadline == nil ? nil : AppInfo.role(row.client) == nil ? 0 : 1)
+            ].compactMap { $0 }, deadlineCaption: row.deadline == nil ? nil : AppInfo.role(row.client) == nil ? 0 : 1)
             ForEach(Pane.allCases) { pane in
                 cell(row, pane).frame(width: PanelLayout.columnWidth)
             }
