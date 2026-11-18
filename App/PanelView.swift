@@ -250,7 +250,7 @@ struct PanelView: View {
             HStack(spacing: PanelLayout.sectionSpacing) {
                 ForEach(items, id: \.self) { item in
                     HStack(spacing: 4) {
-                        keySample(item).accessibilityHidden(true)
+                        keySample(item).scaleEffect(0.8).allowsHitTesting(false).accessibilityHidden(true)
                         Text(item.rawValue)
                     }
                 }

@@ -32,10 +32,13 @@ struct Allowances: Equatable, Sendable {
         max(1, Int((end.timeIntervalSince(now) / 60).rounded(.up)))
     }
 
-    /// The time left, short enough to sit inside a switch: "38m", or "2h" from 100
-    /// minutes up. The exact end time is in the list above the grid and the tooltip.
+    /// The time left, short enough to sit inside a switch: "38m", then "1h33" from an
+    /// hour up, so it reads the same way as "1 hour 33 minutes" in the list above the
+    /// grid. The exact end time is in that list and the tooltip.
     static func compact(minutes: Int) -> String {
-        minutes < 100 ? "\(minutes)m" : "\(Int((Double(minutes) / 60).rounded()))h"
+        guard minutes >= 60 else { return "\(minutes)m" }
+        let rest = minutes % 60
+        return rest == 0 ? "\(minutes / 60)h" : "\(minutes / 60)h\(rest < 10 ? "0" : "")\(rest)"
     }
 
     /// One short sentence for the panel's title line and the menu bar lock, from the
