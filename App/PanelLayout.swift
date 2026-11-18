@@ -7,24 +7,33 @@ enum PanelLayout {
     static let columnWidth: CGFloat = 56
     static let columnSpacing: CGFloat = 4
     static let padding: CGFloat = 16
+    /// Between the panel's sections, and between the rows and lines inside one.
+    static let sectionSpacing: CGFloat = 12
+    static let rowSpacing: CGFloat = 8
+    /// An app's icon. The gap before its name is rowSpacing.
+    static let iconSize: CGFloat = 20
+    /// Between a group's title and the note beside it.
+    static let groupNoteSpacing: CGFloat = 4
     /// Each Pane column plus the horizontal All Access column.
     static let columnCount = Pane.allCases.count + 1
-    /// Wide enough for every column and a long app name.
-    static let preferredWidth: CGFloat = 800
+    /// Wide enough for every column, a long app name, and the longest line under one
+    /// ("ChatGPT's computer use agent"). The columns keep their places from the
+    /// right edge whatever this is.
+    static let preferredWidth: CGFloat = 832
     /// Room for the popover's border and its gap from the screen's edges.
     static let screenMargin: CGFloat = 24
     /// The shortest app name column worth showing; names truncate in the middle.
     static let minimumNameWidth: CGFloat = 120
 
     /// Columns that behave alike, left to right, with the title and note that go above
-    /// each run of them. Running stands alone and has neither.
+    /// each run of them, on one line. Running stands alone and has neither.
     static let groups: [(title: String, note: String, tip: String, columns: Int)] = [
         ("", "", "", 1),
         ("macOS privacy", "Turn on in System Settings",
          "Revoke can switch these off. Switching one on opens System Settings, because macOS only lets you grant access there.", 4),
         ("Kept by Revoke", "Switch both ways",
          "Revoke keeps these itself, so they switch on and off right here.", 3),
-        ("Take back", "Reset or switch off",
+        ("Take back", "One way",
          "These only ever take access away.", 2),
     ]
 
@@ -37,6 +46,12 @@ enum PanelLayout {
     /// below the menu bar and keeps a gap from the bottom.
     static func maxHeight(forScreenHeight screenHeight: CGFloat) -> CGFloat {
         max(240, screenHeight - screenMargin)
+    }
+
+    /// How much of a panel this wide is left for an app's name and the lines under
+    /// it, beside its icon.
+    static func nameWidth(forPanelWidth width: CGFloat) -> CGFloat {
+        width - 2 * padding - CGFloat(columnCount) * (columnWidth + columnSpacing) - iconSize - rowSpacing
     }
 
     /// The narrowest the panel gets: every column, the padding, and a short name.
