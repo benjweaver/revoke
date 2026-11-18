@@ -12,7 +12,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem?
     private let popover = NSPopover()
     private let grantHelper = GrantHelper()
-    private var panel: NSHostingController<PanelView>?
+    private var panel: PanelController?
     private var window: NSWindow?
     /// Watches for clicks in other apps while the panel is open.
     private var outsideClicks: Any?
@@ -51,7 +51,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         item.button?.sendAction(on: [.leftMouseUp, .rightMouseUp])
         statusItem = item
 
-        let hosting = NSHostingController(rootView: makePanel(width: PanelLayout.preferredWidth))
+        let hosting = PanelController(rootView: makePanel(width: PanelLayout.preferredWidth))
+        hosting.onCancel = { [weak self] in self?.popover.performClose(nil) }
         hosting.sizingOptions = .preferredContentSize
         popover.contentViewController = hosting
         panel = hosting
@@ -124,6 +125,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         button.setAccessibilityLabel("Revoke")
         button.setAccessibilityValue(model.statusText)
         button.setAccessibilityHelp("Opens Revoke's panel. Control-click for a menu.")
+        // The menu again as a VoiceOver action, for someone who can't Control-click.
+        button.setAccessibilityCustomActions([
+            NSAccessibilityCustomAction(name: "Show Menu", target: self, selector: #selector(showMenuFromAction)),
+        ])
         button.toolTip = !model.snapshot.canReadTCC ? "Revoke: \(model.statusText)"
             : isOpen ? "Revoke: \(model.statusText). The lock stays open until no watched app \(what)."
             : "Revoke: \(model.statusText). No watched app \(what)."
@@ -194,6 +199,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusItem?.menu = nil
     }
 
+    /// A custom action's method reports whether it did the thing. The menu opens a
+    /// turn later: it runs its own event loop, and VoiceOver waits on this to return.
+    @objc private func showMenuFromAction() -> Bool {
+        popover.performClose(nil)
+        DispatchQueue.main.async { [weak self] in self?.showMenu() }
+        return true
+    }
+
     @objc private func revokeAll() { model.revokeWatched(reason: nil) }
 
     @objc private func stopAll() { model.stopAll() }
@@ -225,6 +238,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func screenLocked() {
         model.sleepOrLock(reason: "the screen locked")
+    }
+}
+
+/// Hosts the panel and closes it on Escape, whichever switch or button holds the
+/// keyboard's focus: a key press nothing takes comes up the responder chain to here.
+final class PanelController: NSHostingController<PanelView> {
+    var onCancel: (() -> Void)?
+
+    override func cancelOperation(_ sender: Any?) {
+        onCancel?()
     }
 }
 

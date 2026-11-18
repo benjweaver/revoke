@@ -94,7 +94,15 @@ struct SettingsView: View {
                                 }
                             }
                         }
+                        // In a grouped form the switch doesn't take a label built from
+                        // several views as its own: it came out unnamed, with the name
+                        // and role as loose text beside it. So the switch is named here
+                        // and the text it's drawn with is left out.
+                        .accessibilityHidden(true)
                     }
+                    .accessibilityLabel(["Watch \(AppInfo.name(client))", AppInfo.role(client)].compactMap { $0 }.joined(separator: ", "))
+                    // What's on screen is the name alone, so that's what Voice Control hears.
+                    .accessibilityInputLabels([AppInfo.name(client)])
                     .tip(settings.isWatched(client)
                           ? "Watched: Revoke All Watched and the automatic options cover \(AppInfo.name(client)) (\(client.key))."
                           : "Not watched: Revoke lists \(AppInfo.name(client)) (\(client.key)) but leaves its access alone.")
@@ -235,5 +243,7 @@ struct SettingsView: View {
             loginError = error.localizedDescription
         }
         launchAtLogin = SMAppService.mainApp.status == .enabled
+        // The message appears under the switch without the focus moving to it.
+        if let loginError { Announcement.post(loginError, isUrgent: true) }
     }
 }

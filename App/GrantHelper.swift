@@ -58,6 +58,10 @@ final class GrantHelper {
         dragBegan = false
         place()
         panel.orderFrontRegardless()
+        // The helper never takes the keyboard from System Settings, so VoiceOver
+        // wouldn't come across it. This says what to do there, without the drag.
+        Announcement.post("To give \(name) \(pane.title) back, press the Add button under the list in System Settings and choose \(name).",
+                          isUrgent: true)
 
         let timer = Timer(timeInterval: 0.4, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated {
@@ -139,7 +143,6 @@ private struct GrantHelperView: View {
                         return NSItemProvider(contentsOf: app) ?? NSItemProvider()
                     }
                     .accessibilityLabel("\(name), to drag into the list in System Settings")
-                    .accessibilityHint("If dragging isn't for you, choose Show in Finder, then use the Add button under the list.")
                 Label("Drag", systemImage: "arrow.up")
                     .font(.caption2)
                     .foregroundStyle(Color.panelSecondary)
@@ -149,9 +152,13 @@ private struct GrantHelperView: View {
                 Text("Drag \(name) into the list in System Settings")
                     .font(.headline)
                     .fixedSize(horizontal: false, vertical: true)
-                Text("Revoke took \(name) off the \(access) list, so there's no switch to flip. Drop its icon on the list and macOS adds it, switched on.")
+                Text(explanation)
                     .font(.callout)
                     .fixedSize(horizontal: false, vertical: true)
+                    // The way without dragging, in the text VoiceOver reads on its way
+                    // through the window rather than as a hint on the icon, which is
+                    // only heard by someone who stops on the thing they can't use.
+                    .accessibilityLabel("\(explanation) \(withoutDragging)")
                 Text("macOS asks for your password or Touch ID to finish. If \(name) is still in the list, switch it on there.")
                     .font(.caption)
                     .foregroundStyle(Color.panelSecondary)
@@ -159,6 +166,7 @@ private struct GrantHelperView: View {
                 HStack {
                     Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([app]) }
                         .help("Shows \(name) in Finder, for the Add button under the list or to drag from there.")
+                        .accessibilityHint("Shows where \(name) is, to choose it after pressing the Add button under the list in System Settings.")
                     Spacer()
                     Button("Done", action: done)
                         .keyboardShortcut(.defaultAction)
@@ -169,5 +177,16 @@ private struct GrantHelperView: View {
         .padding(16)
         .frame(width: 440)
         .background(Color(nsColor: .windowBackgroundColor))
+        // Escape puts the helper away, as Done does.
+        .onExitCommand(perform: done)
+    }
+
+    private var explanation: String {
+        "Revoke took \(name) off the \(access) list, so there's no switch to flip. Drop its icon on the list and macOS adds it, switched on."
+    }
+
+    /// For someone who can't drag: the list's own Add button does the same.
+    private var withoutDragging: String {
+        "Without dragging: press the Add button under the list in System Settings and choose \(name) there. Show in Finder shows where it is."
     }
 }
