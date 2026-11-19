@@ -38,6 +38,9 @@ from its section below.
 ### Changed
 
 - All Access is a Revoke button in each row, since it could only ever switch off.
+- Revoking an app's access also ends the whole internet it was given for a while, so
+  Revoke All Watched, sleep or lock, quitting, and the time limit leave nothing on for
+  now. An app whose Internet isn't limited is still left alone.
 - A switch that's on and that only System Settings can change has a lock on it.
 - The panel's glass has a veil of the window's background color over it. Bare, it
   took its lightness from the desktop behind it, and in the light appearance over a

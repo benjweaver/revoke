@@ -656,6 +656,20 @@ final class AccessModel: ObservableObject {
                 filterFailure = error.localizedDescription
             }
         }
+        // The whole internet, given for a while to an app that's kept to its model,
+        // ends with the rest: "for now" doesn't outlast a revocation. Only when more
+        // than one kind of access is being taken, so the Local Network switch by
+        // itself leaves it. An app that isn't limited is left alone, as Internet is a
+        // choice per app that no revocation makes.
+        if panes.count > 1, panes.contains(.localNetwork), filter.isOn {
+            for id in installed where allowances.internet[id] != nil {
+                switch await filter.limitInternet([id], hosts: internetHosts(for: .bundle(id))) {
+                case .success(let list): settings.adoptInternetLimited(list)
+                case .failure(let error): filterFailure = filterFailure ?? error.localizedDescription
+                }
+            }
+            await readAllowances()
+        }
         var failures: [String: String] = [:]
         // Links. Automatic runs leave file types be: macOS asks the person to confirm
         // each one, and nobody may be there to answer.
