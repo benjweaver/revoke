@@ -162,11 +162,17 @@ panel_rect() {
 }
 
 # Opens the panel unless it's open already: clicking the menu bar icon again would close it.
+# One look can miss an open panel, when ssh drops as the VM's addresses change, and the
+# click then closes it. So a click that leaves no panel is followed by another.
 panel_open() {
-	mac windows Revoke | awk -F'\t' '$4 == 25 { found = 1 } END { exit !found }' && return 0
-	mac menu Revoke >/dev/null
-	sleep 2
-	panel_rect >/dev/null
+	local try
+	for try in 1 2 3; do
+		mac windows Revoke | awk -F'\t' '$4 == 25 { found = 1 } END { exit !found }' && return 0
+		mac menu Revoke >/dev/null
+		sleep 2
+		panel_rect >/dev/null && return 0
+	done
+	return 1
 }
 
 # The x of a column's switch, counted from the right edge of the panel's window: 14
