@@ -70,6 +70,12 @@ wait_rect() {
 	return 1
 }
 
+# The escape test shuts the VM down when it started it, so after a release the VM is
+# usually off. mac up starts it only if it's stopped, and cleanup's mac down then
+# stops it again.
+print "==> Starting the VM"
+mac up
+
 print "==> Installing Revoke"
 if [[ -n ${APP:-} ]]; then
 	[[ -d $APP ]] || { print -u2 "screenshots.sh: no app at $APP"; exit 1; }
