@@ -5,7 +5,7 @@ All notable changes are listed here. The format follows
 [Semantic Versioning](https://semver.org/). Each release's notes on GitHub come
 from its section below.
 
-## [1.7.0] - Unreleased
+## [1.7.0] - 2026-11-24
 
 ### Added
 
