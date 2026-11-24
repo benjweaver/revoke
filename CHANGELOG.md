@@ -5,7 +5,7 @@ All notable changes are listed here. The format follows
 [Semantic Versioning](https://semver.org/). Each release's notes on GitHub come
 from its section below.
 
-## [Unreleased]
+## [1.7.1] - 2026-11-24
 
 ### Fixed
 
@@ -345,6 +345,7 @@ from its section below.
   deleted or replaced.
 - Apps from Anthropic and OpenAI are watched by default.
 
+[1.7.1]: https://github.com/benjweaver/revoke/releases/tag/v1.7.1
 [1.7.0]: https://github.com/benjweaver/revoke/releases/tag/v1.7.0
 [1.6.3]: https://github.com/benjweaver/revoke/releases/tag/v1.6.3
 [1.6.2]: https://github.com/benjweaver/revoke/releases/tag/v1.6.2
