@@ -22,8 +22,20 @@ struct Row: Identifiable {
     let canBlockLocalNetwork: Bool
     /// The app, its helpers, or something they started is running.
     let isRunning: Bool
+    /// When the local network or the whole internet, given for a while, ends.
+    var localNetworkUntil: Date?
+    var internetUntil: Date?
 
     var id: Client { client }
+
+    /// When this access ends, if it's on only for now.
+    func allowedUntil(_ pane: Pane) -> Date? {
+        switch pane {
+        case .localNetwork: localNetworkUntil
+        case .internet: internetUntil
+        default: nil
+        }
+    }
 
     func isAllowed(_ pane: Pane) -> Bool {
         if pane == .running { return isRunning }
@@ -53,7 +65,16 @@ struct Activity {
 @MainActor
 final class AccessModel: ObservableObject {
     @Published private(set) var snapshot = Snapshot()
-    @Published private(set) var lastActivity: Activity?
+    /// Said through VoiceOver as it changes: the panel shows it in a line at the
+    /// bottom, far from the switch that was pressed, and nothing else says a revoke
+    /// finished or failed.
+    @Published private(set) var lastActivity: Activity? {
+        didSet {
+            guard let lastActivity else { return }
+            Announcement.post(lastActivity.isError ? "Failed: \(lastActivity.text)" : lastActivity.text,
+                              isUrgent: lastActivity.isError)
+        }
+    }
     @Published private(set) var isRevoking = false
     /// Bundle IDs of the apps running now, so the lock and the panel's dots follow
     /// apps as they launch and quit, even while the panel is open.
@@ -61,6 +82,14 @@ final class AccessModel: ObservableObject {
     /// The same, with helpers counted as the app they're inside, so the status says
     /// "Claude is running" rather than "Claude and Claude Helper are running".
     @Published private(set) var runningAppIDs = Set<String>()
+
+    /// Called when System Settings has been opened for the person to grant something.
+    var onGrantNeeded: ((Client, Pane) -> Void)?
+    /// Access that's on only for now, as the filter last reported it.
+    @Published private(set) var allowances = Allowances()
+    /// The time the panel counts minutes from. It moves while something is on for now.
+    @Published private(set) var clock = Date()
+    private var allowanceTimer: Timer?
 
     private let settings: Settings
     let filter: NetworkFilter
@@ -219,7 +248,7 @@ final class AccessModel: ObservableObject {
     /// A deleted app, whose entries can go. Parts of macOS can't be found the way
     /// apps can (the Screen Sharing agent is a plain bundle Launch Services doesn't
     /// list), so they never count: macOS grants their access again on its own.
-    private func isMissing(_ client: Client) -> Bool {
+    func isMissing(_ client: Client) -> Bool {
         client.bundleID != nil && !AppInfo.isInstalled(client) && !isAppleSystem(client)
     }
 
@@ -245,7 +274,9 @@ final class AccessModel: ObservableObject {
                 isBlockedFromLocalNetwork: isBlockedFromLocalNetwork(client),
                 isInternetLimited: isInternetLimited(client),
                 canBlockLocalNetwork: filter.isOn,
-                isRunning: client.bundleID.map { runningAppIDs.contains($0) || stoppableIDs.contains($0) } ?? false)
+                isRunning: client.bundleID.map { runningAppIDs.contains($0) || stoppableIDs.contains($0) } ?? false,
+                localNetworkUntil: client.bundleID.flatMap { allowances.localNetwork[$0] },
+                internetUntil: client.bundleID.flatMap { allowances.internet[$0] })
         }
         .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
     }
@@ -279,15 +310,20 @@ final class AccessModel: ObservableObject {
         client.bundleID.map(runningIDs.contains) ?? false
     }
 
+    /// Watched apps with the local network or the whole internet on only for now.
+    var onForNowNames: [String] {
+        rows(watched: true)
+            .filter { row in
+                [Pane.localNetwork, .internet].contains { pane in
+                    row.isAllowed(pane) && row.allowedUntil(pane).map { $0 > clock } == true
+                }
+            }
+            .map(\.name)
+    }
+
     var statusText: String {
-        guard snapshot.canReadTCC else { return "Needs Full Disk Access to show status" }
-        let exposed = exposedNames
-        if !exposed.isEmpty {
-            return "\(exposed.formatted(.list(type: .and))) \(exposed.count == 1 ? "has" : "have") access"
-        }
-        let running = Set(runningNames).sorted()
-        if !running.isEmpty { return "\(running.formatted(.list(type: .and))) \(running.count == 1 ? "is" : "are") running" }
-        return "Watched apps are locked down"
+        Allowances.status(
+            canReadTCC: snapshot.canReadTCC, exposed: exposedNames, running: runningNames, onForNow: onForNowNames)
     }
 
     /// Every installed app the settings could list, watched ones first.
@@ -324,9 +360,24 @@ final class AccessModel: ObservableObject {
             }
         } else if !on, !pane.tccutilServices.isEmpty, client.bundleID != nil {
             revoke([client], panes: [pane], reason: nil)
+        } else if on {
+            openSettings(toGrant: pane, for: client)
         } else if let url = pane.settingsURL {
             NSWorkspace.shared.open(url)
         }
+    }
+
+    /// Opens System Settings at a pane for the person to give an app access, with the
+    /// steps alongside for adding the app back to the list.
+    func openSettings(toGrant pane: Pane, for client: Client) {
+        guard let url = pane.settingsURL else { return }
+        NSWorkspace.shared.open(url)
+        onGrantNeeded?(client, pane)
+    }
+
+    /// Whether an app has this access now, as far as Revoke can read.
+    func isAllowed(_ pane: Pane, for client: Client) -> Bool {
+        snapshot.entries[client]?[pane]?.access == .allowed
     }
 
     /// A column switch in the Watched header row.
@@ -392,6 +443,37 @@ final class AccessModel: ObservableObject {
         guard filter.isOn else { return }
         if case .success(let limited) = await filter.limited() { settings.adoptInternetLimited(limited) }
         if case .success(let blocked) = await filter.blocked() { settings.adoptLocalNetworkBlocked(blocked) }
+        await readAllowances()
+    }
+
+    /// Reads when each allowance ends, and keeps the minutes moving until the last one
+    /// has. When one ends, the filter's lists have changed too, so those are read again.
+    private func readAllowances() async {
+        let now = Date()
+        let answer = await filter.allowances()
+        // With the filter off nothing is on for now. With it on and no answer, the last
+        // answer stands, so the timer below asks again rather than stopping for good.
+        let read = filter.isOn ? allowances.replaced(by: answer, at: now) : Allowances()
+        if read != allowances { allowances = read }
+        clock = now
+        allowanceTimer?.invalidate()
+        allowanceTimer = nil
+        guard let end = read.nextEnd else { return }
+        // Each half minute, or just after the first one ends, whichever comes first.
+        let wake = min(end.addingTimeInterval(1), now.addingTimeInterval(30))
+        let timer = Timer(fire: wake, interval: 0, repeats: false) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                if Date() >= end { self.readFilterBlocklist() } else { Task { await self.readAllowances() } }
+            }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        allowanceTimer = timer
+    }
+
+    /// Ends access that's on for now, as the person asked: the same as switching it off.
+    func endAllowance(_ pane: Pane, for client: Client) {
+        set(pane, on: false, for: client)
     }
 
     /// Shows the network filter's own list of blocked apps in the panel.
@@ -400,9 +482,11 @@ final class AccessModel: ObservableObject {
             if case .success(let limited) = await self.filter.limited() {
                 self.settings.adoptInternetLimited(limited)
             }
+            await self.readAllowances()
             switch await self.filter.blocked() {
             case .success(let list):
                 self.settings.adoptLocalNetworkBlocked(list)
+                await self.readAllowances()
             case .failure(let error):
                 let text = "Couldn't read which apps the network filter blocks: \(error.localizedDescription)"
                 log.error("\(text, privacy: .public)")
@@ -422,6 +506,7 @@ final class AccessModel: ObservableObject {
             switch result {
             case .success(let list):
                 self.settings.adoptLocalNetworkBlocked(list)
+                await self.readAllowances()
                 text = block ? "Blocked Local Network for \(names)" : "Stopped blocking Local Network for \(names)"
             case .failure(let error):
                 text = "Couldn't \(block ? "block" : "stop blocking") Local Network for \(names): \(error.localizedDescription)"
@@ -444,6 +529,7 @@ final class AccessModel: ObservableObject {
             switch await self.filter.allow(ids, minutes: minutes) {
             case .success(let list):
                 self.settings.adoptLocalNetworkBlocked(list)
+                await self.readAllowances()
                 text = "Allowed Local Network for \(name) for \(duration), as you said"
                 let timer = Timer(timeInterval: TimeInterval(minutes * 60) + 1, repeats: false) { _ in
                     MainActor.assumeIsolated { self.readFilterBlocklist() }
@@ -485,6 +571,7 @@ final class AccessModel: ObservableObject {
             switch result {
             case .success(let list):
                 self.settings.adoptInternetLimited(list)
+                await self.readAllowances()
                 if !limit {
                     text = "\(name) can reach the whole internet again"
                 } else if hosts.isEmpty {
@@ -511,6 +598,7 @@ final class AccessModel: ObservableObject {
             switch await self.filter.allowInternet(ids, minutes: minutes) {
             case .success(let list):
                 self.settings.adoptInternetLimited(list)
+                await self.readAllowances()
                 text = "Allowed the whole internet for \(name) for \(duration), as you said"
                 let timer = Timer(timeInterval: TimeInterval(minutes * 60) + 1, repeats: false) { _ in
                     MainActor.assumeIsolated { self.readFilterBlocklist() }
@@ -562,9 +650,26 @@ final class AccessModel: ObservableObject {
             case .success(let list):
                 settings.adoptLocalNetworkBlocked(list)
                 newlyBlocked = Set(installed).intersection(list).subtracting(wasBlocked)
+                // Blocking ends a block lifted for a while, so "On for now" lets go of it too.
+                await readAllowances()
             case .failure(let error):
                 filterFailure = error.localizedDescription
             }
+        }
+        // The whole internet, given for a while to an app that's kept to its model,
+        // ends with the rest: "for now" doesn't outlast a revocation. Only when more
+        // than one kind of access is being taken, so the Local Network switch by
+        // itself leaves it. An app that isn't limited is left alone, as Internet is a
+        // choice per app that no revocation makes, unless the person chose in Settings
+        // to have revoking limit the internet too. Then every app here is limited.
+        if panes.count > 1, panes.contains(.localNetwork), filter.isOn {
+            for id in installed where settings.revokeLimitsInternet || allowances.internet[id] != nil {
+                switch await filter.limitInternet([id], hosts: internetHosts(for: .bundle(id))) {
+                case .success(let list): settings.adoptInternetLimited(list)
+                case .failure(let error): filterFailure = filterFailure ?? error.localizedDescription
+                }
+            }
+            await readAllowances()
         }
         var failures: [String: String] = [:]
         // Links. Automatic runs leave file types be: macOS asks the person to confirm

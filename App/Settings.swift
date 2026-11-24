@@ -33,6 +33,11 @@ final class Settings: ObservableObject {
     @Published var revokeOnSleepOrLock: Bool {
         didSet { defaults.set(revokeOnSleepOrLock, forKey: "revokeOnSleepOrLock"); onChange?() }
     }
+    /// Whether revoking an app's access also keeps it to its model provider's hosts on
+    /// the internet. Off unless the person asks: Internet is otherwise a choice per app.
+    @Published var revokeLimitsInternet: Bool {
+        didSet { defaults.set(revokeLimitsInternet, forKey: "revokeLimitsInternet"); onChange?() }
+    }
     /// Whether the menu bar lock opens only while a watched app is running, rather than
     /// also while one has Device Control, Screen Recording, or Input Monitoring.
     @Published var lockFollowsRunningOnly: Bool {
@@ -89,6 +94,7 @@ final class Settings: ObservableObject {
         let minutes = defaults.integer(forKey: "limitMinutes")
         limitMinutes = Self.timeLimits.contains(minutes) ? minutes : 30
         revokeOnSleepOrLock = defaults.bool(forKey: "revokeOnSleepOrLock")
+        revokeLimitsInternet = defaults.bool(forKey: "revokeLimitsInternet")
         lockFollowsRunningOnly = defaults.bool(forKey: "lockFollowsRunningOnly")
         added = Set(defaults.stringArray(forKey: "watched") ?? [])
         removed = Set(defaults.stringArray(forKey: "unwatched") ?? [])

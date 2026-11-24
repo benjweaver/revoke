@@ -5,6 +5,59 @@ All notable changes are listed here. The format follows
 [Semantic Versioning](https://semver.org/). Each release's notes on GitHub come
 from its section below.
 
+## [1.7.0] - 2026-11-24
+
+### Added
+
+- Revoking can limit the internet too. With "Limit the internet when access is
+  revoked" on in Settings, Revoke, Revoke All Watched, and the automatic options also
+  switch Internet off for the apps they cover, keeping each to its developer's hosts.
+  It's off unless you choose it.
+- Access you gave for a while, by saying yes when an app asked, no longer looks like a
+  switch left on. Its switch shows a clock and the time left, the app's row says when
+  it ends, and a strip at the top of the panel lists everything that's on for now with
+  an End Now button. Switching it off ends it too.
+- The panel's columns are grouped by how they behave: what only macOS can grant, what
+  Revoke keeps itself and switches both ways, and what only takes access away. A key
+  under the panel says what each shape of switch means.
+- The Watched row says how many apps it covers, and a switch that's on for only some
+  of them sits in the middle and says for how many.
+- Giving access back takes three steps you don't have to hunt for. Revoking takes an
+  app off a privacy list altogether, so switching it on again meant the + button and
+  finding the app in a file browser. Revoke now puts a small window by System Settings
+  with the steps and the app's location to copy: click +, press ⇧⌘G, paste, and open.
+  It works from the keyboard, and it doesn't rely on dropping an app on the list,
+  which macOS 27.3 stops accepting. A request you say yes to gets one too.
+
+### Fixed
+
+- VoiceOver read the menu bar item as its status alone and never said "Revoke". It now
+  says Revoke, then the status.
+- VoiceOver stopped on each app's icon in the panel and in Settings and said only
+  "image". The icons are skipped, since the name beside each says the same.
+- In the panel, each app's switches are a group named for the app, so VoiceOver says
+  whose they are and can step over an app in one move.
+- The Settings window was titled "Revoke", like the app. It's "Revoke Settings".
+
+### Changed
+
+- All Access is a Revoke button in each row, since it could only ever switch off.
+- Revoking an app's access also ends the whole internet it was given for a while, so
+  Revoke All Watched, sleep or lock, quitting, and the time limit leave nothing on for
+  now. An app whose Internet isn't limited is still left alone.
+- A switch that's on and that only System Settings can change has a lock on it.
+- The panel's glass has a veil of the window's background color over it. Bare, it
+  took its lightness from the desktop behind it, and in the light appearance over a
+  dark desktop it went mid-gray with the app names gray on gray. Reduce Transparency
+  and Increase Contrast make the panel solid.
+- Small gray text in the panel was about 4:1 even on white, and the white on the blue
+  button the same. The panel's text now has its own solid colors, worked out to hold
+  at least 4.5:1 on the veiled glass whatever is behind it, in light and dark. That
+  is arithmetic, checked by the tests, and hasn't been measured on a screen yet.
+- On a screen too short for it, the panel scrolls. macOS used to push its top, with
+  the title and Settings, off the screen.
+- The sentence about System Settings under the panel is gone: the column groups say it.
+
 ## [1.6.3] - 2026-11-11
 
 ### Added
@@ -284,6 +337,7 @@ from its section below.
   deleted or replaced.
 - Apps from Anthropic and OpenAI are watched by default.
 
+[1.7.0]: https://github.com/benjweaver/revoke/releases/tag/v1.7.0
 [1.6.3]: https://github.com/benjweaver/revoke/releases/tag/v1.6.3
 [1.6.2]: https://github.com/benjweaver/revoke/releases/tag/v1.6.2
 [1.6.1]: https://github.com/benjweaver/revoke/releases/tag/v1.6.1

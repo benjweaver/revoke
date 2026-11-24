@@ -47,7 +47,7 @@
 #   limited along with it, have their Other access reset, and come out with Local
 #   Network and the internet allowed, whatever they had before.
 #
-# It clicks the Watched row's switches by position, since macOS doesn't offer the panel's
+# It clicks the summary row's switches by position, since macOS doesn't offer the panel's
 # switches to accessibility there, and checks each click against Revoke's own lists. If
 # the panel's layout changes, the offsets in `column` and `header_y` are what to update.
 #
@@ -108,12 +108,19 @@ cleanup() {
 	# Revoke running and the test app still there.
 	guest '(nohup open /Applications/Revoke.app >/dev/null 2>&1 &)' >/dev/null 2>&1 || true
 	sleep 6
-	if panel_open 2>/dev/null; then
-		[[ $(listed localNetworkBlocked) == yes ]] && click_header local-network || true
-		[[ $(listed internetLimited) == yes ]] && click_header internet || true
-		[[ $(listed linksBlocked) == yes ]] && click_header links || true
-		mac key esc >/dev/null 2>&1 || true
-	fi
+	# A switch that's on for only some apps goes off at the first click and on at the
+	# second, and a click can miss, so each list gets a few tries.
+	local pair try
+	for pair in localNetworkBlocked:local-network internetLimited:internet linksBlocked:links; do
+		for try in 1 2 3; do
+			[[ $(listed ${pair%%:*}) == yes ]] || break
+			allow_local_network_question
+			panel_open 2>/dev/null && click_header ${pair##*:} || true
+			guest "osascript -e 'tell application \"System Settings\" to quit'" >/dev/null 2>&1 || true
+		done
+		[[ $(listed ${pair%%:*}) == yes ]] && print "  couldn't lift ${pair##*:} for the test app; lift it in Revoke's panel in the VM"
+	done
+	mac key esc >/dev/null 2>&1 || true
 	guest "osascript -e 'tell application \"System Settings\" to quit'" >/dev/null 2>&1 || true
 	mac quit Revoke >/dev/null 2>&1 || true
 	sleep 1
@@ -155,15 +162,22 @@ panel_rect() {
 }
 
 # Opens the panel unless it's open already: clicking the menu bar icon again would close it.
+# One look can miss an open panel, when ssh drops as the VM's addresses change, and the
+# click then closes it. So a click that leaves no panel is followed by another.
 panel_open() {
-	mac windows Revoke | awk -F'\t' '$4 == 25 { found = 1 } END { exit !found }' && return 0
-	mac menu Revoke >/dev/null
-	sleep 2
-	panel_rect >/dev/null
+	local try
+	for try in 1 2 3; do
+		mac windows Revoke | awk -F'\t' '$4 == 25 { found = 1 } END { exit !found }' && return 0
+		mac menu Revoke >/dev/null
+		sleep 2
+		panel_rect >/dev/null && return 0
+	done
+	return 1
 }
 
 # The x of a column's switch, counted from the right edge of the panel's window: 14
 # points of shadow, 16 of padding, then columns 56 wide with 4 between (PanelLayout).
+# The panel's width doesn't come into it: a wider panel only widens the names.
 column() {
 	local from_right
 	case $1 in
@@ -176,11 +190,17 @@ column() {
 	esac
 	print $(( $2 + $3 - 14 - 16 - 27 - 60 * from_right ))
 }
-# The Watched row's switches sit this far below the top of the panel's window, shadow
-# included, while the status under the title is one line.
-header_y=144
+# The summary row's switches sit this far below the top of the panel's window, shadow
+# included, while the status under the title is one line and nothing is on for now:
+# the strip that lists timed access pushes the grid down, so the run only clicks once
+# an allowance it asked for has ended. From the top of the panel's content the switch's
+# middle is 139 points down: 16 of padding, an 18-point title line, 12, 18 of group
+# titles, 8, 46 of column titles, 8, 4 of the row's own padding, and half the switch's
+# 18. The other 27 are the popover's shadow and arrow.
+header_y=166
 
-# Clicks the Watched row's switch in a column, which acts on every watched app.
+# Clicks the summary row's switch in a column, which acts on every watched app. The
+# last column is the Revoke button.
 click_header() {
 	local rect x y
 	rect=($(panel_rect)) || die "Revoke's panel isn't on screen"
@@ -208,6 +228,9 @@ set_column() {
 		die "clicking $column didn't change $list; has the panel's layout moved? (see column and header_y, and build/escape-test-failure.png)"
 	fi
 	mac key esc >/dev/null 2>&1 || true
+	# The panel takes a moment to go. Without the wait, a second flip straight after
+	# this one finds the closing panel, takes it for open, and then has nothing to click.
+	sleep 2
 }
 
 # MARK: - The test app's results
@@ -520,6 +543,29 @@ if got_link "$test_scheme://kept-out"; then fail "a link reached the app after N
 open_link "$test_scheme://let-in" Yes
 if got_link "$test_scheme://let-in"; then pass "a link reaches the app after Yes"; else fail "a link didn't reach the app after Yes"; fi
 if got_link "$test_scheme://kept-out"; then fail "the link kept out arrived later"; fi
+
+print "==> Revoking limits the internet too, when that's chosen in Settings"
+if [[ $(listed internetLimited) == no ]]; then pass "revoking left Internet alone while the option was off"; else fail "revoking limited the internet though the option was off"; fi
+mac quit Revoke >/dev/null 2>&1 || true
+sleep 1
+guest "defaults write $defaults_domain revokeLimitsInternet -bool true"
+start_revoke || die "Revoke's filter wasn't there after relaunching"
+# Everything else is off already, so the whole internet is all that's left to take.
+allow_local_network_question
+panel_open || die "couldn't open Revoke's panel"
+click_header all-access
+sleep 4
+guest "osascript -e 'tell application \"System Settings\" to quit'" >/dev/null 2>&1 || true
+mac key esc >/dev/null 2>&1 || true
+if [[ $(listed internetLimited) == yes ]]; then pass "Revoke limited the internet"; else fail "Revoke didn't limit the internet with the option on"; fi
+line=$(results)
+expect "$line" net_other no "the other host is out of reach after revoking"
+expect "$line" net_allowed ok "and the allowed host still answers"
+mac quit Revoke >/dev/null 2>&1 || true
+sleep 1
+guest "defaults delete $defaults_domain revokeLimitsInternet" >/dev/null 2>&1 || true
+start_revoke || die "Revoke's filter wasn't there after relaunching"
+set_column internet internetLimited no
 
 if [[ -z ${SKIP_TIME_LIMIT:-} ]]; then
 	print "==> The time limit, at its shortest ($limit_minutes minutes)"

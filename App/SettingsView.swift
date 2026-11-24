@@ -38,6 +38,8 @@ struct SettingsView: View {
                 TextField("Other hosts to allow", text: $extraHosts, prompt: Text("proxy.example.com, models.example.org"))
                     .onSubmit { saveExtraHosts() }
                     .tip("Hosts every limited app may reach besides its developer's own, such as a proxy or a model you host. Subdomains count. Press Return to save.")
+                Toggle("Limit the internet when access is revoked", isOn: $settings.revokeLimitsInternet)
+                    .tip("Revoke, Revoke All Watched, and the automatic options also switch Internet off, keeping each app to its developer's hosts and the ones above. Switch Internet back on in the panel.")
                 if extraHosts != settings.extraInternetHosts.joined(separator: ", ") {
                     Button("Save Hosts") { saveExtraHosts() }
                         .tip("Saves the list. Anything that isn't a host name with a dot in it is left out.")
@@ -45,7 +47,7 @@ struct SettingsView: View {
             } header: {
                 Text("Internet")
             } footer: {
-                Text("Switch an app's Internet off in the panel and the network filter drops its connections to the internet, commands it starts included, except to its developer's own hosts (Anthropic's for Claude, OpenAI's for ChatGPT) and the ones here. The local network keeps its own switch. A change here applies the next time you switch an app's Internet off. The filter goes by the host name a connection gives, which stops an agent that was talked into visiting a site, not one built to lie about where it's going.")
+                Text("Switch an app's Internet off in the panel and the network filter drops its connections to the internet, commands it starts included, except to its developer's own hosts (Anthropic's for Claude, OpenAI's for ChatGPT) and the ones here. The local network keeps its own switch. Revoking leaves Internet as it is unless you choose otherwise above, though it always ends the whole internet given for a while. A change to the hosts applies the next time you switch an app's Internet off. The filter goes by the host name a connection gives, which stops an agent that was talked into visiting a site, not one built to lie about where it's going.")
                     .foregroundStyle(.secondary)
             }
 
@@ -86,7 +88,7 @@ struct SettingsView: View {
                     Toggle(isOn: Binding(get: { settings.isWatched(client) },
                                          set: { settings.setWatched(client, $0) })) {
                         HStack(spacing: 8) {
-                            Image(nsImage: AppInfo.icon(client)).resizable().frame(width: 18, height: 18)
+                            Image(nsImage: AppInfo.icon(client)).resizable().frame(width: 18, height: 18).accessibilityHidden(true)
                             VStack(alignment: .leading, spacing: 0) {
                                 Text(AppInfo.name(client))
                                 if let role = AppInfo.role(client) {
@@ -94,7 +96,15 @@ struct SettingsView: View {
                                 }
                             }
                         }
+                        // In a grouped form the switch doesn't take a label built from
+                        // several views as its own: it came out unnamed, with the name
+                        // and role as loose text beside it. So the switch is named here
+                        // and the text it's drawn with is left out.
+                        .accessibilityHidden(true)
                     }
+                    .accessibilityLabel(["Watch \(AppInfo.name(client))", AppInfo.role(client)].compactMap { $0 }.joined(separator: ", "))
+                    // What's on screen is the name alone, so that's what Voice Control hears.
+                    .accessibilityInputLabels([AppInfo.name(client)])
                     .tip(settings.isWatched(client)
                           ? "Watched: Revoke All Watched and the automatic options cover \(AppInfo.name(client)) (\(client.key))."
                           : "Not watched: Revoke lists \(AppInfo.name(client)) (\(client.key)) but leaves its access alone.")
@@ -110,7 +120,7 @@ struct SettingsView: View {
                 Section {
                     ForEach(settings.hiddenClients.sorted { AppInfo.name($0).localizedStandardCompare(AppInfo.name($1)) == .orderedAscending }, id: \.self) { client in
                         HStack(spacing: 8) {
-                            Image(nsImage: AppInfo.icon(client)).resizable().frame(width: 18, height: 18)
+                            Image(nsImage: AppInfo.icon(client)).resizable().frame(width: 18, height: 18).accessibilityHidden(true)
                             Text(AppInfo.name(client))
                             Spacer()
                             Button("Show") { settings.setHidden(client, false) }
@@ -235,5 +245,7 @@ struct SettingsView: View {
             loginError = error.localizedDescription
         }
         launchAtLogin = SMAppService.mainApp.status == .enabled
+        // The message appears under the switch without the focus moving to it.
+        if let loginError { Announcement.post(loginError, isUrgent: true) }
     }
 }

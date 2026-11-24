@@ -11,7 +11,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let requests: AccessRequestPrompt
     private var statusItem: NSStatusItem?
     private let popover = NSPopover()
-    private var panel: NSHostingController<PanelView>?
+    private let grantHelper = GrantHelper()
+    private var panel: PanelController?
     private var window: NSWindow?
     /// Watches for clicks in other apps while the panel is open.
     private var outsideClicks: Any?
@@ -50,12 +51,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         item.button?.sendAction(on: [.leftMouseUp, .rightMouseUp])
         statusItem = item
 
-        let hosting = NSHostingController(rootView: makePanel(width: PanelLayout.preferredWidth))
+        let hosting = PanelController(rootView: makePanel(width: PanelLayout.preferredWidth))
+        hosting.onCancel = { [weak self] in self?.popover.performClose(nil) }
         hosting.sizingOptions = .preferredContentSize
         popover.contentViewController = hosting
         panel = hosting
         popover.behavior = .transient
         popover.delegate = self
+        model.onGrantNeeded = { [weak self] client, pane in
+            guard let self else { return }
+            // The panel would sit over System Settings and close at the first click there.
+            self.popover.performClose(nil)
+            self.grantHelper.show(for: client, pane: pane) { [weak self] in self?.model.isAllowed(pane, for: client) ?? false }
+        }
         NSApp.mainMenu = Self.makeMainMenu()
 
         // objectWillChange fires before the change lands, so look a turn later.
@@ -111,9 +119,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let what = settings.lockFollowsRunningOnly ? "is running" : "is running or has access"
         let symbol = !model.snapshot.canReadTCC ? "lock.trianglebadge.exclamationmark"
             : isOpen ? "lock.open.fill" : "lock.fill"
-        button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: model.statusText)
+        // VoiceOver says the app's name first, then what the lock is showing. The
+        // image's own description used to be the whole of it, and never said "Revoke".
+        button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)
+        button.setAccessibilityLabel("Revoke")
+        button.setAccessibilityValue(model.statusText)
+        button.setAccessibilityHelp("Opens Revoke's panel. Control-click for a menu.")
+        // The menu again as a VoiceOver action, for someone who can't Control-click.
+        button.setAccessibilityCustomActions([
+            NSAccessibilityCustomAction(name: "Show Menu", target: self, selector: #selector(showMenuFromAction)),
+        ])
         button.toolTip = !model.snapshot.canReadTCC ? "Revoke: \(model.statusText)"
             : isOpen ? "Revoke: \(model.statusText). The lock stays open until no watched app \(what)."
+            // Network access that's on for now doesn't open the lock. The status names
+            // it, so this says what the lock goes by rather than "no app has access".
+            : !model.onForNowNames.isEmpty
+            ? "Revoke: \(model.statusText). The lock is closed: no watched app is running\(settings.lockFollowsRunningOnly ? "" : " or has Device Control, Screen Recording, or Input Monitoring")."
             : "Revoke: \(model.statusText). No watched app \(what)."
     }
 
@@ -139,13 +160,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Task { await model.refreshFilterLists() }
         // Fit the screen whose menu bar was clicked: on one narrower than the panel,
         // macOS would otherwise cut off its right edge.
-        let screenWidth = (button.window?.screen ?? NSScreen.main)?.visibleFrame.width ?? PanelLayout.preferredWidth
-        let width = PanelLayout.width(forScreenWidth: screenWidth)
-        if let panel, panel.rootView.width != width {
-            panel.rootView = makePanel(width: width)
+        let screen = (button.window?.screen ?? NSScreen.main)?.visibleFrame
+        let width = PanelLayout.width(forScreenWidth: screen?.width ?? PanelLayout.preferredWidth)
+        let maxHeight = screen.map { PanelLayout.maxHeight(forScreenHeight: $0.height) } ?? .infinity
+        if let panel, panel.rootView.width != width || panel.rootView.maxHeight != maxHeight {
+            panel.rootView = makePanel(width: width, maxHeight: maxHeight)
         }
         NSApp.activate()
         popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+        // VoiceOver and the keyboard go where the key window is. A popover shown while
+        // another app is in front doesn't always take it by itself.
+        popover.contentViewController?.view.window?.makeKey()
         // A transient popover only closes on outside clicks while Revoke is the
         // active app, and macOS may turn down the activation, so close it here too.
         // Global monitors see only other apps' events: clicks in the panel and on
@@ -160,8 +185,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    private func makePanel(width: CGFloat) -> PanelView {
-        PanelView(model: model, settings: settings, filter: filter, width: width) { [weak self] in
+    private func makePanel(width: CGFloat, maxHeight: CGFloat = .infinity) -> PanelView {
+        PanelView(model: model, settings: settings, filter: filter, width: width, maxHeight: maxHeight) { [weak self] in
             self?.showSettings()
         }
     }
@@ -178,6 +203,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusItem?.menu = nil
     }
 
+    /// A custom action's method reports whether it did the thing. The menu opens a
+    /// turn later: it runs its own event loop, and VoiceOver waits on this to return.
+    @objc private func showMenuFromAction() -> Bool {
+        popover.performClose(nil)
+        DispatchQueue.main.async { [weak self] in self?.showMenu() }
+        return true
+    }
+
     @objc private func revokeAll() { model.revokeWatched(reason: nil) }
 
     @objc private func stopAll() { model.stopAll() }
@@ -187,7 +220,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if window == nil {
             let hosting = NSHostingController(rootView: SettingsView(settings: settings, model: model, filter: filter))
             let w = NSWindow(contentViewController: hosting)
-            w.title = "Revoke"
+            w.title = "Revoke Settings"
             w.styleMask = [.titled, .closable]
             w.isReleasedWhenClosed = false
             w.center()
@@ -209,6 +242,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func screenLocked() {
         model.sleepOrLock(reason: "the screen locked")
+    }
+}
+
+/// Hosts the panel and closes it on Escape, whichever switch or button holds the
+/// keyboard's focus: a key press nothing takes comes up the responder chain to here.
+final class PanelController: NSHostingController<PanelView> {
+    var onCancel: (() -> Void)?
+
+    override func cancelOperation(_ sender: Any?) {
+        onCancel?()
     }
 }
 
