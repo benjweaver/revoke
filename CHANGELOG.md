@@ -9,6 +9,10 @@ from its section below.
 
 ### Added
 
+- Revoking can limit the internet too. With "Limit the internet when access is
+  revoked" on in Settings, Revoke, Revoke All Watched, and the automatic options also
+  switch Internet off for the apps they cover, keeping each to its developer's hosts.
+  It's off unless you choose it.
 - Access you gave for a while, by saying yes when an app asked, no longer looks like a
   switch left on. Its switch shows a clock and the time left, the app's row says when
   it ends, and a strip at the top of the panel lists everything that's on for now with

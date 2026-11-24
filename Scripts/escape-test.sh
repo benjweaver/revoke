@@ -541,6 +541,29 @@ open_link "$test_scheme://let-in" Yes
 if got_link "$test_scheme://let-in"; then pass "a link reaches the app after Yes"; else fail "a link didn't reach the app after Yes"; fi
 if got_link "$test_scheme://kept-out"; then fail "the link kept out arrived later"; fi
 
+print "==> Revoking limits the internet too, when that's chosen in Settings"
+if [[ $(listed internetLimited) == no ]]; then pass "revoking left Internet alone while the option was off"; else fail "revoking limited the internet though the option was off"; fi
+mac quit Revoke >/dev/null 2>&1 || true
+sleep 1
+guest "defaults write $defaults_domain revokeLimitsInternet -bool true"
+start_revoke || die "Revoke's filter wasn't there after relaunching"
+# Everything else is off already, so the whole internet is all that's left to take.
+allow_local_network_question
+panel_open || die "couldn't open Revoke's panel"
+click_header all-access
+sleep 4
+guest "osascript -e 'tell application \"System Settings\" to quit'" >/dev/null 2>&1 || true
+mac key esc >/dev/null 2>&1 || true
+if [[ $(listed internetLimited) == yes ]]; then pass "Revoke limited the internet"; else fail "Revoke didn't limit the internet with the option on"; fi
+line=$(results)
+expect "$line" net_other no "the other host is out of reach after revoking"
+expect "$line" net_allowed ok "and the allowed host still answers"
+mac quit Revoke >/dev/null 2>&1 || true
+sleep 1
+guest "defaults delete $defaults_domain revokeLimitsInternet" >/dev/null 2>&1 || true
+start_revoke || die "Revoke's filter wasn't there after relaunching"
+set_column internet internetLimited no
+
 if [[ -z ${SKIP_TIME_LIMIT:-} ]]; then
 	print "==> The time limit, at its shortest ($limit_minutes minutes)"
 	set_column local-network localNetworkBlocked no

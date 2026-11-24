@@ -206,7 +206,8 @@ drops the app's connections to the internet, commands it starts included, except
 its developer's own hosts and any you add in Settings. The switch's tooltip lists them.
 The local network isn't part of this; it keeps its own switch. Revoke All Watched and
 the automatic options leave Internet alone, since an agent kept to its model can't
-search or fetch.
+search or fetch. To have them switch Internet off too, turn on **Limit the internet
+when access is revoked** in Settings.
 
 - **Built-in hosts** cover Anthropic (`anthropic.com`, `claude.ai`, `claude.com`,
   `claudeusercontent.com`),

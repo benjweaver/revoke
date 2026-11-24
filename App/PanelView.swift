@@ -639,7 +639,7 @@ struct PanelView: View {
 
     @ViewBuilder
     private func watchedAllAccessCell(_ watched: [Row]) -> some View {
-        let isOn = watched.contains { $0.hasAccess(filterIsOn: filter.isOn) }
+        let isOn = watched.contains(where: hasSomethingToRevoke)
         if !isOn && !model.snapshot.canReadTCC {
             unknown("Access")
         } else {
@@ -655,9 +655,17 @@ struct PanelView: View {
         }
     }
 
+    /// Whether Revoke would take anything from an app: an access switch that's on, or,
+    /// when revoking limits the internet too, the whole internet.
+    private func hasSomethingToRevoke(_ row: Row) -> Bool {
+        row.hasAccess(filterIsOn: filter.isOn)
+            || settings.revokeLimitsInternet && filter.isOn && row.client.bundleID != nil
+                && !model.isMissing(row.client) && row.isAllowed(.internet)
+    }
+
     @ViewBuilder
     private func rowAllAccessCell(_ row: Row) -> some View {
-        let isOn = row.hasAccess(filterIsOn: filter.isOn)
+        let isOn = hasSomethingToRevoke(row)
         if row.client.bundleID == nil {
             dash("Revoke", tip: "Only System Settings can change command-line tools listed by path.")
         } else if !isOn && !model.snapshot.canReadTCC {

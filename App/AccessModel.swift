@@ -248,7 +248,7 @@ final class AccessModel: ObservableObject {
     /// A deleted app, whose entries can go. Parts of macOS can't be found the way
     /// apps can (the Screen Sharing agent is a plain bundle Launch Services doesn't
     /// list), so they never count: macOS grants their access again on its own.
-    private func isMissing(_ client: Client) -> Bool {
+    func isMissing(_ client: Client) -> Bool {
         client.bundleID != nil && !AppInfo.isInstalled(client) && !isAppleSystem(client)
     }
 
@@ -660,9 +660,10 @@ final class AccessModel: ObservableObject {
         // ends with the rest: "for now" doesn't outlast a revocation. Only when more
         // than one kind of access is being taken, so the Local Network switch by
         // itself leaves it. An app that isn't limited is left alone, as Internet is a
-        // choice per app that no revocation makes.
+        // choice per app that no revocation makes, unless the person chose in Settings
+        // to have revoking limit the internet too. Then every app here is limited.
         if panes.count > 1, panes.contains(.localNetwork), filter.isOn {
-            for id in installed where allowances.internet[id] != nil {
+            for id in installed where settings.revokeLimitsInternet || allowances.internet[id] != nil {
                 switch await filter.limitInternet([id], hosts: internetHosts(for: .bundle(id))) {
                 case .success(let list): settings.adoptInternetLimited(list)
                 case .failure(let error): filterFailure = filterFailure ?? error.localizedDescription
