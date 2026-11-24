@@ -34,7 +34,10 @@ enum Pane: CaseIterable, Identifiable {
         guard client.bundleID != nil else { return false }
         return access.contains { pane in
             if pane == .localNetwork {
-                return filterIsOn && !isBlockedFromLocalNetwork && entries[.localNetwork]?.access == .allowed
+                // As the switch shows it: an app macOS has no Local Network entry for
+                // reaches the network all the same, and Revoke can block it.
+                return filterIsOn && !isBlockedFromLocalNetwork
+                    && entries[.localNetwork].map { $0.access == .allowed } ?? true
             }
             return entries[pane]?.access == .allowed
         }

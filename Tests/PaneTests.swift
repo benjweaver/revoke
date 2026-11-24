@@ -96,7 +96,13 @@ struct PaneTests {
 
     @Test func rowAllAccessSwitchReflectsRevocableAccessOnly() {
         let claude = Client.bundle("com.anthropic.claudefordesktop")
-        #expect(!Pane.hasRevocableAccess(claude, entries: [:], isBlockedFromLocalNetwork: false, filterIsOn: true))
+        #expect(!Pane.hasRevocableAccess(claude, entries: [:], isBlockedFromLocalNetwork: false, filterIsOn: false))
+        // No Local Network entry in macOS: the app has the network, and the filter can take it.
+        #expect(Pane.hasRevocableAccess(claude, entries: [:], isBlockedFromLocalNetwork: false, filterIsOn: true))
+        #expect(!Pane.hasRevocableAccess(claude, entries: [:], isBlockedFromLocalNetwork: true, filterIsOn: true))
+        #expect(!Pane.hasRevocableAccess(
+            claude, entries: [.localNetwork: Entry(access: .denied)],
+            isBlockedFromLocalNetwork: false, filterIsOn: true))
         #expect(Pane.hasRevocableAccess(
             claude, entries: [.fullDiskAccess: Entry(access: .allowed)],
             isBlockedFromLocalNetwork: false, filterIsOn: false))

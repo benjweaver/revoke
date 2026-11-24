@@ -5,6 +5,14 @@ All notable changes are listed here. The format follows
 [Semantic Versioning](https://semver.org/). Each release's notes on GitHub come
 from its section below.
 
+## [Unreleased]
+
+### Fixed
+
+- An app with Local Network on, but no entry of its own in macOS's Local Network list,
+  had no Revoke button in its row, and neither did the Watched row when that was all
+  the watched apps had. The switch showed it as on; the button now agrees.
+
 ## [1.7.0] - 2026-11-24
 
 ### Added
