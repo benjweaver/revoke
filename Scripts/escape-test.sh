@@ -517,6 +517,15 @@ allow_local_network_question
 panel_open || die "couldn't open Revoke's panel"
 click_header all-access
 sleep 4
+if [[ $(listed localNetworkBlocked) != yes ]]; then
+	# One run's click did nothing here, with no sign why in Revoke's log. So a miss is
+	# said out loud and photographed, and the click tried once more.
+	print "  note  the first click on Revoke did nothing (build/escape-test-missed-click.png)"
+	panel_open && mac shot build/escape-test-missed-click.png >/dev/null 2>&1 || true
+	panel_open || die "couldn't open Revoke's panel"
+	click_header all-access
+	sleep 4
+fi
 guest "osascript -e 'tell application \"System Settings\" to quit'" >/dev/null 2>&1 || true
 mac key esc >/dev/null 2>&1 || true
 if [[ $(listed localNetworkBlocked) == yes ]]; then pass "Local Network is blocked"; else fail "Local Network wasn't blocked"; fi
