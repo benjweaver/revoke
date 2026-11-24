@@ -228,6 +228,9 @@ set_column() {
 		die "clicking $column didn't change $list; has the panel's layout moved? (see column and header_y, and build/escape-test-failure.png)"
 	fi
 	mac key esc >/dev/null 2>&1 || true
+	# The panel takes a moment to go. Without the wait, a second flip straight after
+	# this one finds the closing panel, takes it for open, and then has nothing to click.
+	sleep 2
 }
 
 # MARK: - The test app's results
